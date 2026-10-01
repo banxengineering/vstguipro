@@ -1,0 +1,20 @@
+# OS clutter
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Tooling, if ever added
+node_modules/
+*.log
+.env
+.env.*
+
+# Scratch and local test output
+tmp/
+scratch/
+*.tmp

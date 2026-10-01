@@ -1,0 +1,19 @@
+{
+  "name": "VST GUI Pro",
+  "id": "1563956754324486889",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": [
+    "figma"
+  ],
+  "networkAccess": {
+    "allowedDomains": [
+      "https://dev-banxengineering.pythonanywhere.com"
+    ]
+  },
+  "permissions": [
+    "currentuser"
+  ],
+  "documentAccess": "dynamic-page"
+}

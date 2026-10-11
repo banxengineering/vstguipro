@@ -6,8 +6,24 @@
 - Once submitted for approval
 - The user community will have input on future features
 
+## [2.2.0] - 2026-10-11
 ### Added
 - Two new PRO knob styles, **Frost** (light) and **Graphite** (dark): a smooth top-lit dome with a thin value arc, three ticks and a short pointer. Only the pointer and arc move, so the knob body can sit in the panel art with Vellum's ring on top
+- **3D knobs**: a new **3D** section in the Knob studio tilts the camera toward the knob and gives it height. Works on any knob, including your own designs
+  - **Tilt** (look down on the knob or up from below), **Height** and **Perspective**
+  - Lit sides with their own colors, **Shine** and **Rim light**. Smooth round sides are shaded in one even sweep. Knurls, flutes and slots turn on the sides with the value while the lighting stays put
+  - Side shapes: **Flare** (a skirt or bell, or a straight cone for speed knobs), **Grooves** (diamond knurling on a knurled body), **Slots** and a plain **Base band**
+  - A raised **cap** with its own height, taper (chamfer, cone or witch hat) and optional dome, and a raised **bar** for chicken-head knobs
+  - A **cast shadow** that grows with the knob's height, plus a contact shadow where it meets the panel
+- **Printing** for 3D knobs: a number scale printed on the top or down the side that turns with the knob, like guitar knobs. 0–10 (Gibson style) or 1–10 with the 0 spot left blank (Fender style), each number standing with its foot toward the knob's edge, read where the pointer starts (lower left) or at the top, with an optional **index mark** on the panel. Also a **label** on top (VOL., TONE) and a **side stripe** under the pointer, like mixer knobs
+- Two new free 3D starter styles, **Puck** and **Studio**
+- 13 new PRO 3D knobs: **Machined**, **Bakelite**, **Cream**, **Anodized** (LED ring), **Diamond**, **Gold Line**, **Amp**, **Gold Slot**, **Witch Hat**, **Top Hat**, **Skirted**, **Speed** and **Mixer**
+- **What's new** card: shows once after an update with the release's highlights and a **Try it** button
+
+### Notes
+- Flat knobs are unchanged: existing designs and saved specs build exactly the same knobs and strips as before
+- 3D knobs are still flat images frame by frame, so strips, @2x export, Download PNG and Vellum skins work as usual. A 3D strip has more layers than a flat one (about 35–100 per frame), so a 128-frame strip takes a little longer to build
+- Use the same Tilt for every knob on a panel so they share one camera
 
 ## [2.1.0] - 2026-09-30
 ### Added

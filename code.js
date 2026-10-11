@@ -1,8 +1,8 @@
 "use strict";
 
 // Version constants
-const VERSION = "2.1.0";
-const BUILD_DATE = "09-30-2026";
+const VERSION = "2.2.0";
+const BUILD_DATE = "10-11-2026";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -39,6 +39,11 @@ figma.clientStorage.getAsync('export_2x').then(on => {
 // The header's ? pulses until the user first opens the tips
 figma.clientStorage.getAsync('help_seen').then(seen => {
     figma.ui.postMessage({ type: 'help-prefs', seen: seen === true });
+}).catch(() => {});
+// What's new: the UI shows a one-time card when it has notes for VERSION
+// and this user hasn't seen them yet
+figma.clientStorage.getAsync('whats_new_seen').then(seen => {
+    figma.ui.postMessage({ type: 'whats-new', version: VERSION, seen: typeof seen === 'string' ? seen : '' });
 }).catch(() => {});
 figma.clientStorage.getAsync(UI_SIZE_KEY).then(saved => {
     if (saved) {
@@ -573,6 +578,9 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
     else if (msg.type === 'help-seen') {
         yield figma.clientStorage.setAsync('help_seen', true);
     }
+    else if (msg.type === 'whats-new-seen') {
+        yield figma.clientStorage.setAsync('whats_new_seen', VERSION);
+    }
     else if (msg.type === 'export-strip') {
         // Not awaited: Cancel messages must get through while it runs
         exportStudioStrip(msg);
@@ -919,7 +927,9 @@ const KnobShapes = (() => {
     bar: { on: false, shape: 'bar', length: 100, width: 30, offset: 0, round: 4, fill: 'linear', c1: '#4A4A50', c2: '#1E1E22', angle: 90, inset: 0, edge: 0, edgeColor: '#000000', shadow: 0 },
     pointer: { shape: 'line', color: '#FFFFFF', width: 5, length: 18, inset: 6, round: true, glow: 0, edge: 0, edgeColor: '#000000' },
     ring: { style: 'arc', width: 6, gap: 5, count: 21, round: false, track: true, trackColor: '#3A3A42', value: true, valueColor: '#8A5CF6', opacity: 100, glow: 0, bipolar: false, single: false, over: false },
-    ticks: { on: false, count: 11, color: '#8C8898', length: 7, width: 1.5, gap: 4, major: 0, majorLength: 11, labels: 'none', labelSize: 9, labelColor: '#C8C6D0' }
+    ticks: { on: false, count: 11, color: '#8C8898', length: 7, width: 1.5, gap: 4, major: 0, majorLength: 11, labels: 'none', labelSize: 9, labelColor: '#C8C6D0' },
+    depth: { on: false, tilt: 26, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
+    print: { scale: 'none', from1: false, mark: 'start', color: '#F2F2F2', size: 8, radius: 42, ticks: 0, at: 30, index: false, indexColor: '#1A1917', label: '', labelColor: '#141414', labelSize: 7, stripe: false, stripeColor: '#E8322A', stripeWidth: 5 }
   };
 
   const LIMITS = {
@@ -934,7 +944,12 @@ const KnobShapes = (() => {
     'pointer.width': [1, 30], 'pointer.length': [2, 60], 'pointer.inset': [-25, 45], 'pointer.glow': [0, 20], 'pointer.edge': [0, 5],
     'ring.width': [1, 40], 'ring.gap': [-30, 40], 'ring.count': [3, 64], 'ring.opacity': [0, 100], 'ring.glow': [0, 20],
     'ticks.count': [2, 61], 'ticks.length': [1, 30], 'ticks.width': [0, 10], 'ticks.gap': [0, 60],
-    'ticks.major': [0, 10], 'ticks.majorLength': [1, 30], 'ticks.labelSize': [4, 24]
+    'ticks.major': [0, 10], 'ticks.majorLength': [1, 30], 'ticks.labelSize': [4, 24],
+    'depth.tilt': [-60, 60], 'depth.persp': [0, 100], 'depth.height': [0, 80], 'depth.flare': [0, 40], 'depth.shine': [0, 100], 'depth.rim': [0, 100],
+    'depth.grooves': [0, 12], 'depth.slots': [0, 36], 'depth.slotWidth': [2, 50], 'depth.slotDepth': [0, 8], 'depth.band': [0, 60], 'depth.bandInset': [0, 6],
+    'depth.capHeight': [0, 60], 'depth.capTaper': [0, 60], 'depth.capShine': [0, 100], 'depth.capRim': [0, 100], 'depth.capGrooves': [0, 12],
+    'depth.barHeight': [0, 40], 'depth.barShine': [0, 100], 'depth.cast': [0, 200],
+    'print.size': [3, 20], 'print.radius': [10, 60], 'print.ticks': [0, 8], 'print.at': [5, 95], 'print.labelSize': [3, 24], 'print.stripeWidth': [1, 15]
   };
 
   const FILLS = ['solid', 'linear', 'radial', 'conic', 'brushed'];
@@ -947,7 +962,9 @@ const KnobShapes = (() => {
     'bar.fill': FILLS,
     'pointer.shape': ['dot', 'line', 'triangle', 'notch', 'led', 'none'],
     'ring.style': ['arc', 'dots'],
-    'ticks.labels': ['none', 'minmax', 'numbers']
+    'ticks.labels': ['none', 'minmax', 'numbers'],
+    'print.scale': ['none', 'face', 'wall'],
+    'print.mark': ['start', 'top']
   };
 
   // Brushed metal: [position, share of the light color] around the turn,
@@ -1180,6 +1197,8 @@ const KnobShapes = (() => {
     if (s.body.on && s.body.shadow > 0) extent = Math.max(extent, bodyExtent + s.body.shadow * reach);
     if (s.cap.on && s.cap.shadow > 0) extent = Math.max(extent, s.cap.size / 2 + s.cap.shadow * reach);
     if (ringOn && s.ring.value && s.ring.glow > 0) extent = Math.max(extent, ringOut + s.ring.glow);
+    // A 3D knob's walls, shadow and tilt reach further
+    if (deep(s)) extent = Math.max(extent, reach3d(s));
     return { bodyR, ringOn, ringIn, ringOut, ringMid: (ringIn + ringOut) / 2, tickIn, tickOut, labelR, barR, extent };
   }
 
@@ -1240,10 +1259,425 @@ const KnobShapes = (() => {
     return out;
   }
 
+  // ----- 3D: tilt, height and side walls -----
+  // A 3D knob stacks the same layers at heights z (units): the body's top at
+  // zB, a raised cap's top at zC, a raised bar's top at zR. The camera tilts
+  // by `tilt`, so a face at height z is the flat layer squashed by cos(tilt)
+  // and moved by (z - zMid)·sin(tilt): both sides draw faces with their usual
+  // code under that mapping (faceMap). Walls are quads between an outline at
+  // two heights, lit per quad by one fixed light, so ridges on the wall turn
+  // with the knob while the lighting stays put. Positive tilt looks down on
+  // the knob and shows the wall above the face; negative looks up from below.
+  const LIGHT = (() => {
+    const l = [-0.45, -0.75, 0.55];
+    const m = Math.hypot(l[0], l[1], l[2]);
+    return l.map(x => x / m);
+  })();
+  const GLOSS = 24;
+
+  const deep = s => !!(s.depth && s.depth.on);
+
+  // Share of the base radius left at height fraction u (0 base, 1 top)
+  function bodyAt(s, u) {
+    const d = s.depth;
+    return 1 + d.flare / 100 * Math.pow(1 - u, d.cone ? 1 : 1.6);
+  }
+  function capAt(s, u) {
+    const t = s.depth.capTaper / 100;
+    return s.depth.dome ? 1 - t * (1 - Math.sqrt(Math.max(0, 1 - u * u))) : 1 - t * u;
+  }
+
+  function view(s) {
+    const d = s.depth;
+    const t = rad(d.tilt);
+    const capOn = s.cap.on && d.capHeight > 0;
+    const barOn = s.bar.on && d.barHeight > 0;
+    const zB = Math.max(0.01, d.height);
+    const zC = zB + (capOn ? d.capHeight : 0);
+    const zBar = capOn ? zC : zB;
+    const zR = zBar + (barOn ? d.barHeight : 0);
+    const zFace = capOn ? zC : zB;
+    const capTop = capOn ? capAt(s, 1) : 1;
+    // The pointer sits on the highest face that holds it
+    const pr = 50 - s.pointer.inset;
+    const host = barOn ? 'bar' : capOn && pr <= capRadius(s, 0) * capTop + 1 ? 'cap' : 'body';
+    // The whole knob, base to face, is centered in the ring and ticks
+    return { ct: Math.cos(t), st: Math.sin(t), zB, zC, zBar, zR, zFace, zMid: zFace / 2, pk: d.persp * 0.00005, capOn, barOn, capTop, host };
+  }
+
+  // Parts nearer the camera draw a little larger
+  const grow = (V, z) => 1 + (z - V.zFace) * V.pk;
+  function proj(V, x, y, z) {
+    const g = grow(V, z);
+    return [r3(x * g), r3(y * V.ct * g + (z - V.zMid) * V.st)];
+  }
+  // A face at height z: unit x, y land at x·sx, y·sy + ty
+  function faceMap(V, z) {
+    const g = grow(V, z);
+    return { sx: g, sy: V.ct * g, ty: (z - V.zMid) * V.st };
+  }
+
+  // Colors on a step of 8 so both sides get the same few, and Figma can
+  // merge the faces of one color into one vector
+  const mixRgb = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const rgbOf = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+  const hexOf = (c, step = 8) => '#' + c.map(x => ('0' + Math.max(0, Math.min(255, Math.round(x / step) * step)).toString(16)).slice(-2)).join('');
+
+  // Stops [t, value] around a turn, sorted, with the value where the last
+  // meets the first added at 0 and 1 so the sweep closes; mix(a, b, w)
+  function sweepStops(stops, mix) {
+    stops.sort((a, b) => a[0] - b[0]);
+    const a = stops[stops.length - 1];
+    const b = stops[0];
+    const gap = 1 - a[0] + b[0];
+    const at = mix(a[1], b[1], gap > 0 ? (1 - a[0]) / gap : 0);
+    return [[0, at]].concat(stops, [[1, at]]);
+  }
+
+  function orient(P) {
+    let a = 0;
+    for (let i = 0; i < P.length; i++) {
+      const p = P[i];
+      const q = P[(i + 1) % P.length];
+      a += p[0] * q[1] - q[0] * p[1];
+    }
+    return a >= 0 ? 1 : -1;
+  }
+
+  // A wall around outline P (units) from z0 to z1; rAt(u) scales the outline
+  // at height fraction u. look: c1 lit, c2 dark, shine, rim, grooves, ao, bands.
+  // Returns quads in drawing order (far first), colored by light alone, then
+  // shades: one black overlay per band for the shadow near the base and the
+  // grooves, and the rim light along the top. Light and shine are stepped, so
+  // a wall has few colors and Figma merges the quads of each into one vector.
+  // A smooth round wall (look.smooth) is shaded without steps instead: each
+  // band is one ring of quads filled by a sweep (a conic gradient around the
+  // band's center) through its faces' colors, returned as `rings` with no
+  // faces, and its rim light is one sweep along the top (`rimRing`).
+  // Sweep stops are [t, value], t the turn clockwise on screen from +x, 0..1.
+  function wall(V, P, z0, z1, rAt, look) {
+    const sgn = orient(P);
+    const n = P.length;
+    const grooves = Math.round(look.grooves);
+    const bands = grooves ? grooves * 2 + 1 : look.bands;
+    const lit = rgbOf(look.c1);
+    const dark = rgbOf(look.c2);
+    const view3 = [0, -V.st, V.ct];
+    const half = [LIGHT[0] + view3[0], LIGHT[1] + view3[1], LIGHT[2] + view3[2]];
+    const hm = Math.hypot(half[0], half[1], half[2]);
+    const faces = [];
+    const shades = [];
+    const rings = [];
+    const tops = [];
+    const turnOf = (pts, C) => {
+      const t = Math.atan2((pts[0][1] + pts[2][1]) / 2 - C[1], (pts[0][0] + pts[2][0]) / 2 - C[0]) / (2 * Math.PI);
+      return t < 0 ? t + 1 : t;
+    };
+    for (let j = 0; j < bands; j++) {
+      const u0 = j / bands;
+      const u1 = (j + 1) / bands;
+      const za = z0 + (z1 - z0) * u0;
+      const zb = z0 + (z1 - z0) * u1;
+      const ra = rAt(u0);
+      const rb = rAt(u1);
+      const groove = grooves && j % 2 === 1;
+      const ao = look.ao * Math.pow(1 - (u0 + u1) / 2, 2);
+      // A smooth wall takes the shadow into its own colors instead
+      const shade = { alpha: look.smooth ? 0 : Math.round(20 * (1 - (1 - ao) * (groove ? 0.45 : 1))) / 20, polys: [] };
+      if (shade.alpha > 0) shades.push(shade);
+      const ring = { polys: [], center: proj(V, 0, 0, (za + zb) / 2), stops: [] };
+      if (look.smooth) rings.push(ring);
+      for (let i = 0; i < n; i++) {
+        const p = P[i];
+        const q = P[(i + 1) % n];
+        const tx = q[0] - p[0];
+        const ty = q[1] - p[1];
+        const tl = Math.hypot(tx, ty) || 1;
+        const mx = (p[0] + q[0]) / 2;
+        const my = (p[1] + q[1]) / 2;
+        // Outward normal, tipped up where the wall narrows toward the top
+        let nx = sgn * ty / tl;
+        let ny = -sgn * tx / tl;
+        let nz = (ra - rb) * (Math.hypot(mx, my) || 1) / Math.max(0.01, zb - za);
+        const m = Math.hypot(nx, ny, nz);
+        nx /= m; ny /= m; nz /= m;
+        if (nx * view3[0] + ny * view3[1] + nz * view3[2] <= 0.001) continue;
+        let dif = Math.max(0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]);
+        let spec = Math.min(1, Math.pow(Math.max(0, (nx * half[0] + ny * half[1] + nz * half[2]) / hm), GLOSS) * look.shine);
+        if (!look.smooth) {
+          dif = Math.round(20 * dif) / 20;
+          spec = Math.round(16 * spec) / 16;
+        }
+        const c = mixRgb(mixRgb(dark, lit, Math.min(1, 0.12 + 0.95 * dif)), [255, 255, 255], spec);
+        const pts = [proj(V, p[0] * ra, p[1] * ra, za), proj(V, q[0] * ra, q[1] * ra, za), proj(V, q[0] * rb, q[1] * rb, zb), proj(V, p[0] * rb, p[1] * rb, zb)];
+        if (shade.alpha > 0) shade.polys.push(pts);
+        if (look.smooth) {
+          ring.polys.push(pts);
+          ring.stops.push([turnOf(pts, ring.center), c.map(x => x * (1 - ao))]);
+          if (j === bands - 1) tops.push({ i, pts, dif });
+          continue;
+        }
+        faces.push({
+          pts,
+          color: hexOf(c),
+          depth: mx * view3[0] + my * view3[1] + (za + zb) / 2 * view3[2],
+          top: j === bands - 1,
+          dif
+        });
+      }
+    }
+    if (look.smooth) {
+      const out = { faces: [], shades: shades.filter(sh => sh.polys.length), rims: [], rings: [] };
+      rings.forEach(R => {
+        if (R.polys.length) out.rings.push({ polys: R.polys, center: R.center, stops: sweepStops(R.stops, mixRgb).map(st => [r3(st[0]), hexOf(st[1], 1)]) });
+      });
+      if (look.rim > 0 && tops.length) {
+        // The top edge in runs of neighboring faces, joined round the seam
+        const runs = [];
+        tops.forEach(f => {
+          const run = runs[runs.length - 1];
+          if (run && run.last === f.i - 1) {
+            run.pts.push(f.pts[2]);
+            run.last = f.i;
+          } else {
+            runs.push({ first: f.i, last: f.i, pts: [f.pts[3], f.pts[2]] });
+          }
+        });
+        if (runs.length > 1 && runs[0].first === 0 && runs[runs.length - 1].last === n - 1) {
+          const end = runs.pop();
+          runs[0].pts = end.pts.concat(runs[0].pts.slice(1));
+        }
+        const C = proj(V, 0, 0, z1);
+        const stops = sweepStops(tops.map(f => [turnOf(f.pts, C), Math.min(1, look.rim * (0.25 + f.dif))]), (a, b, w) => a + (b - a) * w);
+        out.rimRing = { runs: runs.map(r => r.pts), center: C, stops: stops.map(st => [r3(st[0]), r3(st[1])]) };
+      }
+      return out;
+    }
+    faces.sort((a, b) => a.depth - b.depth);
+    const rims = [];
+    if (look.rim > 0) {
+      faces.forEach(f => {
+        if (f.top) rims.push({ a: f.pts[3], b: f.pts[2], alpha: Math.round(10 * Math.min(1, look.rim * (0.25 + f.dif))) / 10 });
+      });
+    }
+    return { faces: faces.map(f => ({ pts: f.pts, color: f.color })), shades: shades.filter(sh => sh.polys.length), rims: rims.filter(r => r.alpha > 0) };
+  }
+
+  // Narrow flat-bottomed slots up the body wall, turning with the knob
+  function slotted(s, v) {
+    const d = s.depth;
+    const count = Math.round(d.slots);
+    const w = d.slotWidth / 100;
+    const rot = pointerDeg(s, v);
+    return radial(u => (Math.abs(frac(u * count) - 0.5) < w / 2 ? 50 - d.slotDepth : 50), count * 48, rot);
+  }
+
+  function wallLook(s, part) {
+    const d = s.depth;
+    // Smooth: a plain round side, shaded in sweeps rather than steps, in
+    // more and thinner bands so the shadow fades up it evenly
+    if (part === 'cap') {
+      const smooth = s.cap.shape === 'circle' && !Math.round(d.capGrooves);
+      return { c1: d.capC1, c2: d.capC2, shine: d.capShine / 100, rim: d.capRim / 100, grooves: d.capGrooves, ao: 0.3, bands: d.dome && d.capTaper > 0 ? (smooth ? 14 : 10) : (smooth ? 10 : 6), smooth };
+    }
+    if (part === 'bar') return { c1: d.barC1, c2: d.barC2, shine: d.barShine / 100, rim: 0.3, grooves: 0, ao: 0.3, bands: 3 };
+    const smooth = s.body.shape === 'circle' && !Math.round(d.grooves) && !(d.slots > 0);
+    return { c1: d.c1, c2: d.c2, shine: d.shine / 100, rim: d.rim / 100, grooves: d.grooves, ao: 0.55, bands: smooth ? 16 : 8, smooth };
+  }
+
+  // Every wall, in projected units: { body, cap, bar }, each { faces, rims } or null
+  function walls(s, v) {
+    const V = view(s);
+    const d = s.depth;
+    const out = { body: null, cap: null, bar: null };
+    if (s.body.on) {
+      const side = d.slots > 0 ? slotted(s, v) : body(s, v);
+      const look = wallLook(s, 'body');
+      const band = d.band / 100;
+      if (band > 0) {
+        // A plain ring at the base, set in a little, under the shaped wall
+        const inset = 1 - d.bandInset / 50;
+        const lo = wall(V, circle(50), 0, V.zB * band, u => inset * bodyAt(s, u * band), Object.assign({}, look, { rim: 0, grooves: 0, bands: 4, smooth: true }));
+        const hi = wall(V, side, V.zB * band, V.zB, u => bodyAt(s, band + u * (1 - band)), Object.assign({}, look, { ao: 0.15 }));
+        out.body = { faces: lo.faces.concat(hi.faces), shades: lo.shades.concat(hi.shades), rims: hi.rims, rings: (lo.rings || []).concat(hi.rings || []), rimRing: hi.rimRing };
+      } else {
+        out.body = wall(V, side, 0, V.zB, u => bodyAt(s, u), look);
+      }
+    }
+    if (V.capOn) out.cap = wall(V, cap(s, v, 0), V.zB, V.zC, u => capAt(s, u), wallLook(s, 'cap'));
+    if (V.barOn) out.bar = wall(V, bar(s, v, 0), V.zBar, V.zR, () => 1, wallLook(s, 'bar'));
+    return out;
+  }
+
+  // The shadow the base casts on the panel, and a tight contact shadow, in
+  // projected units: blur is a standard deviation, off an [x, y] offset
+  function shadows3d(s, v) {
+    const V = view(s);
+    const b = s.body;
+    const k0 = bodyAt(s, 0);
+    const base = body(s, v).map(p => proj(V, p[0] * k0, p[1] * k0, 0));
+    const blur = b.shadow * s.depth.cast / 100;
+    const a = rad(b.shadowAngle);
+    const dist = blur * b.shadowDist / 100 + V.zFace * 0.22 * s.depth.cast / 100;
+    return {
+      base,
+      drop: { blur: blur * 0.5, alpha: b.shadowAlpha / 100, off: [r3(dist * Math.cos(a)), r3(dist * Math.sin(a))] },
+      contact: { blur: 1.6, alpha: 0.55, off: [0, 0.8] }
+    };
+  }
+
+  // Where a printed scale is read: at 7:30 like every pointer's start, or at
+  // 12 o'clock
+  const markDeg = s => (s.print.mark === 'top' ? 270 : START);
+
+  // The panel's index mark: a small triangle just outside the knob at the
+  // reading spot, pointing at the number printed on the knob
+  function indexMark(s) {
+    const V = view(s);
+    const a = rad(markDeg(s));
+    const c = Math.cos(a);
+    const sn = Math.sin(a);
+    const k0 = bodyAt(s, 0);
+    // The knob's edge in that direction: its base or its top, whichever is farther out
+    const edge = [proj(V, 50 * k0 * c, 50 * k0 * sn, 0), proj(V, 50 * c, 50 * sn, V.zB)]
+      .reduce((m, q) => Math.max(m, q[0] * c + q[1] * sn), 0);
+    const at = (d, w) => [r3((edge + d) * c - w * sn), r3((edge + d) * sn + w * c)];
+    return [at(7, -3.2), at(7, 3.2), at(1.8, 0)];
+  }
+
+  // Printing that turns with the knob: a scale on the body's top face or its
+  // wall (number i sits at the reading spot when v = i / 10; it starts at 0,
+  // or at 1 with the 0 spot left blank), a label on the top face, and a
+  // stripe down the side under the pointer.
+  // Glyphs are { text, size, alpha, m: [a, b, c, d, e, f] }: m maps a glyph
+  // drawn centered on 0, 0 at font size `size` (y down) into projected units.
+  // Quads are { pts, alpha, color } in projected units. Grouped by the wall
+  // or face they're drawn after: bodyWall, bodyFace, capWall, capFace.
+  function prints(s, v) {
+    const V = view(s);
+    const p = s.print;
+    const out = { bodyWall: [], bodyFace: [], capWall: [], capFace: [] };
+    const sweep = sweepDeg(s);
+    const turned = sweep * v;
+    const scaleDeg = (i, n) => markDeg(s) - sweep * i / n + turned;
+    const first = p.from1 ? 1 : 0;
+    const fade = x => Math.round(4 * Math.min(1, x / 0.45)) / 4;
+    // A rotation by `a` at x, y on the face at height z
+    const onFace = (z, a, x, y) => {
+      const F = faceMap(V, z);
+      const c = Math.cos(a);
+      const sn = Math.sin(a);
+      return [F.sx * c, F.sy * sn, -F.sx * sn, F.sy * c, F.sx * x, F.sy * y + F.ty].map(r3);
+    };
+    const faceQuad = (z, pts) => {
+      const F = faceMap(V, z);
+      return pts.map(q => [r3(F.sx * q[0]), r3(F.sy * q[1] + F.ty)]);
+    };
+
+    // On a round wall of radius R·rAt(u) from z0 to z1
+    const onWall = (R, z0, z1, rAt) => {
+      const pt = (a, u, lift) => {
+        const r = R * rAt(u) + (lift || 0);
+        return proj(V, r * Math.cos(a), r * Math.sin(a), z0 + (z1 - z0) * u);
+      };
+      const frame = (a, u) => {
+        const at = pt(a, u);
+        const da = 0.01;
+        const du = 0.02;
+        const pa = pt(a + da, u);
+        const pu = pt(a, u + du);
+        const r = R * rAt(u);
+        const lu = Math.hypot((rAt(u + du) - rAt(u)) * R, (z1 - z0) * du);
+        const T = [(pa[0] - at[0]) / (r * da), (pa[1] - at[1]) / (r * da)];
+        const U = [(pu[0] - at[0]) / lu, (pu[1] - at[1]) / lu];
+        return { at, T, U, vis: T[0] * U[1] - T[1] * U[0] };
+      };
+      const quad = (a, w, u0, u1, lift) => {
+        const h = w / 2 / (R * rAt((u0 + u1) / 2));
+        return [pt(a - h, u0, lift), pt(a + h, u0, lift), pt(a + h, u1, lift), pt(a - h, u1, lift)];
+      };
+      // Text runs against T (T turns clockwise on screen) so it isn't
+      // mirrored; glyph up runs up the wall, so its foot sits toward the base
+      const glyph = (text, size, f) => ({ text, size, alpha: fade(f.vis), m: [-f.T[0], -f.T[1], -f.U[0], -f.U[1], f.at[0], f.at[1]].map(r3) });
+      return { frame, quad, glyph };
+    };
+
+    if (s.body.on && p.scale === 'face') {
+      for (let i = first; i <= 10; i++) {
+        const a = rad(scaleDeg(i, 10));
+        // Foot of each number toward the knob's edge
+        out.bodyFace.push({ text: String(i), size: p.size, alpha: 1, m: onFace(V.zB, a - Math.PI / 2, p.radius * Math.cos(a), p.radius * Math.sin(a)) });
+      }
+      if (p.ticks > 0) {
+        const r0 = p.radius + p.size * 0.7;
+        for (let i = 0; i <= 20; i++) {
+          const a = scaleDeg(i, 20);
+          const P = [turn(r0, -0.35, a), turn(r0 + p.ticks, -0.35, a), turn(r0 + p.ticks, 0.35, a), turn(r0, 0.35, a)];
+          out.bodyFace.push({ pts: faceQuad(V.zB, P), alpha: 1, color: p.color });
+        }
+      }
+    }
+    if (s.body.on && p.scale === 'wall') {
+      const W = onWall(50, 0, V.zB, u => bodyAt(s, u));
+      for (let i = 0; i <= 20; i++) {
+        const a = rad(scaleDeg(i, 20));
+        const f = W.frame(a, 0.8);
+        if (f.vis < 0.12) continue;
+        out.bodyWall.push({ pts: W.quad(a, 0.9, i % 2 ? 0.72 : 0.6, 0.97, 0.05), alpha: fade(f.vis), color: p.color });
+      }
+      for (let i = first; i <= 10; i++) {
+        const a = rad(scaleDeg(i, 10));
+        const f = W.frame(a, p.at / 100);
+        if (f.vis < 0.12) continue;
+        out.bodyWall.push(W.glyph(String(i), p.size, f));
+      }
+    }
+    if (p.label) {
+      const z = V.capOn ? V.zC : V.zB;
+      out[V.capOn ? 'capFace' : 'bodyFace'].push({ text: p.label, size: p.labelSize, alpha: 1, color: p.labelColor, m: onFace(z, rad(turned - sweep / 2), 0, 0) });
+    }
+    if (p.stripe && (V.capOn || s.body.on)) {
+      const a = rad(pointerDeg(s, v));
+      const W = V.capOn ? onWall(capRadius(s, 0), V.zB, V.zC, u => capAt(s, u)) : onWall(50, 0, V.zB, u => bodyAt(s, u));
+      if (W.frame(a, 0.5).vis > 0.02) out[V.capOn ? 'capWall' : 'bodyWall'].push({ pts: W.quad(a, p.stripeWidth, 0, 1, 0.3), alpha: 1, color: p.stripeColor });
+    }
+    return out;
+  }
+
+  // How far a 3D knob reaches from the frame center, in units. Rotation-proof:
+  // each part counts as a circle of its largest radius.
+  function reach3d(s) {
+    const V = view(s);
+    let E = 0;
+    const fit = (R, z, pad) => {
+      const g = grow(V, z);
+      E = Math.max(E, R * g + pad, R * V.ct * g + Math.abs((z - V.zMid) * V.st) + pad);
+    };
+    if (s.body.on) {
+      const R = maxRadius(body(s, 0));
+      const pad = s.print.index ? 9 : 1;
+      fit(R * bodyAt(s, 0), 0, pad);
+      fit(R, V.zB, pad);
+      const sh = shadows3d(s, 0);
+      if (sh.drop.blur > 0) fit(R * bodyAt(s, 0), 0, Math.hypot(sh.drop.off[0], sh.drop.off[1]) + 4 * sh.drop.blur);
+    }
+    if (V.capOn) {
+      const R = maxRadius(cap(s, 0, 0));
+      fit(R, V.zB, 1);
+      fit(R * V.capTop, V.zC, 1);
+    }
+    if (V.barOn) {
+      const R = maxRadius(bar(s, 0, 0));
+      fit(R, V.zBar, 1);
+      fit(R, V.zR, 1);
+    }
+    return E;
+  }
+
   return {
     START, SWEEP, SEG, BASE, LIMITS, ENUMS, FILLS, BRUSH_STOPS, TEX,
     startDeg, sweepDeg, ringShown, labelsOn, pointerDeg, turns, outline, innerRadius, body, cap, capRadius, capInner, bar, maxRadius, bounds,
-    brush, grain, shadowShift, layout, ticks, labels, valueSpan, dotAngles, litDots
+    brush, grain, shadowShift, layout, ticks, labels, valueSpan, dotAngles, litDots, deep, markDeg, bodyAt, capAt, view, proj, faceMap, walls, shadows3d, indexMark, prints, reach3d
   };
 })();
 
@@ -1395,16 +1829,30 @@ function knobEdge(node, widthPx, hex) {
     }
 }
 
-// Shape helpers. ctx: { s, f: frame, c: center px, k: px per unit, L: layout }
+// Shape helpers. ctx: { s, f: frame, c: center px, k: px per unit, L: layout,
+// map: a 3D knob's tilted face (see knobMapAt), or none for a flat knob }
+
+// Where unit point x, y lands in the frame, in px
+function knobPt(ctx, x, y) {
+    const m = ctx.map;
+    return m ? [m.tx + x * m.sx, m.ty + y * m.sy] : [ctx.c + x * ctx.k, ctx.c + y * ctx.k];
+}
+
+// On a tilted face circles become ellipses and turned rectangles become
+// slanted, so those parts are built as vectors instead
+const knobTilted = ctx => !!ctx.map && ctx.map.sx !== ctx.map.sy;
+
 function knobCircleAt(ctx, name, dist, deg, r) {
     const n = figma.createEllipse();
     ctx.f.appendChild(n);
     n.name = name;
-    const d = Math.max(0.01, 2 * r * ctx.k);
     const t = deg * Math.PI / 180;
-    n.resize(d, d);
-    n.x = ctx.c + dist * ctx.k * Math.cos(t) - d / 2;
-    n.y = ctx.c + dist * ctx.k * Math.sin(t) - d / 2;
+    const w = Math.max(0.01, 2 * r * (ctx.map ? ctx.map.sx : ctx.k));
+    const h = Math.max(0.01, 2 * r * (ctx.map ? ctx.map.sy : ctx.k));
+    n.resize(w, h);
+    const p = knobPt(ctx, dist * Math.cos(t), dist * Math.sin(t));
+    n.x = p[0] - w / 2;
+    n.y = p[1] - h / 2;
     return n;
 }
 
@@ -1414,6 +1862,13 @@ function knobCircle(ctx, name, r) {
 
 // Rectangle along the radius at `deg`, from r0 out to r0 + len, `w` wide
 function knobRadialRect(ctx, name, deg, r0, len, w) {
+    if (knobTilted(ctx)) {
+        const t = deg * Math.PI / 180;
+        const c = Math.cos(t);
+        const s = Math.sin(t);
+        const P = [[r0, -w / 2], [r0 + len, -w / 2], [r0 + len, w / 2], [r0, w / 2]].map(p => [p[0] * c - p[1] * s, p[0] * s + p[1] * c]);
+        return knobVector(ctx, name, [P]);
+    }
     const n = figma.createRectangle();
     ctx.f.appendChild(n);
     n.name = name;
@@ -1484,9 +1939,12 @@ function knobBuildTicks(ctx) {
     return knobGroupOf(ctx, 'ticks', nodes);
 }
 
-// Loads the font for scale labels, or null when the knob has none
+// Loads the font for scale labels and a 3D knob's printing, or null when
+// the knob has neither
 function knobLabelFont(s) {
-    if (!s.ticks.on || s.ticks.labels === 'none') return Promise.resolve(null);
+    const labels = s.ticks.on && s.ticks.labels !== 'none';
+    const printing = KnobShapes.deep(s) && (s.print.scale !== 'none' || !!s.print.label);
+    if (!labels && !printing) return Promise.resolve(null);
     const font = { family: 'Inter', style: 'Bold' };
     return figma.loadFontAsync(font).then(() => font, () => null);
 }
@@ -1548,22 +2006,22 @@ function knobBuildValue(ctx, v) {
 
 // A vector from KnobShapes outlines (units, center origin). The path is
 // shifted to start at 0, 0 and the node moved instead, so it lands in the
-// same place whether or not Figma re-normalizes the path.
-function knobVector(ctx, name, polys) {
+// same place whether or not Figma re-normalizes the path. `open` leaves the
+// paths unclosed (lines); `winding` is NONZERO unless given.
+function knobVector(ctx, name, polys, open, winding) {
     let minX = Infinity;
     let minY = Infinity;
     const px = polys.map(P => P.map(p => {
-        const x = ctx.c + p[0] * ctx.k;
-        const y = ctx.c + p[1] * ctx.k;
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        return [x, y];
+        const q = knobPt(ctx, p[0], p[1]);
+        minX = Math.min(minX, q[0]);
+        minY = Math.min(minY, q[1]);
+        return q;
     }));
-    const data = px.map(P => 'M ' + P.map(p => (p[0] - minX).toFixed(3) + ' ' + (p[1] - minY).toFixed(3)).join(' L ') + ' Z').join(' ');
+    const data = px.map(P => 'M ' + P.map(p => (p[0] - minX).toFixed(3) + ' ' + (p[1] - minY).toFixed(3)).join(' L ') + (open ? '' : ' Z')).join(' ');
     const n = figma.createVector();
     ctx.f.appendChild(n);
     n.name = name;
-    n.vectorPaths = [{ windingRule: 'NONZERO', data }];
+    n.vectorPaths = [{ windingRule: winding || 'NONZERO', data }];
     // New vectors come with Figma's default black stroke; parts that want
     // an outline set one afterwards
     n.strokes = [];
@@ -1700,8 +2158,9 @@ function knobBuildPointer(ctx, v) {
         const len = Math.min(p.length, outer);
         const slot = knobRadialRect(ctx, 'pointer', deg, outer - len, len, p.width);
         slot.fills = knobSolid(p.color);
+        // (On a tilted face the slot is an unturned vector, so straight down is down)
         const t = deg * Math.PI / 180;
-        const down = d => ({ x: d * Math.sin(t), y: d * Math.cos(t) });
+        const down = d => (knobTilted(ctx) ? { x: 0, y: d } : { x: d * Math.sin(t), y: d * Math.cos(t) });
         const w = p.width * k;
         slot.effects = [
             { type: 'INNER_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.75 }, offset: down(w * 0.35), radius: w * 0.5, spread: 0, visible: true, blendMode: 'NORMAL' },
@@ -1709,6 +2168,15 @@ function knobBuildPointer(ctx, v) {
         ];
         knobEdge(slot, p.edge * k, p.edgeColor);
         return slot;
+    }
+    if (p.shape === 'triangle' && knobTilted(ctx)) {
+        const len = Math.min(p.length, outer);
+        const t = deg * Math.PI / 180;
+        const at = (r, w) => [r * Math.cos(t) - w * Math.sin(t), r * Math.sin(t) + w * Math.cos(t)];
+        const tri = knobVector(ctx, 'pointer', [[at(outer, 0), at(outer - len, p.width / 2), at(outer - len, -p.width / 2)]]);
+        tri.fills = knobSolid(p.color);
+        knobEdge(tri, p.edge * k, p.edgeColor);
+        return tri;
     }
     if (p.shape === 'triangle') {
         const len = Math.min(p.length, outer);
@@ -1752,6 +2220,290 @@ function knobBuildPointer(ctx, v) {
     return knobGroupOf(ctx, 'pointer', [housing, lens]);
 }
 
+// ----- 3D knobs -----
+// Walls, shadows and printing come from KnobShapes as point lists in
+// projected units (the studio draws the same lists); faces are the usual
+// builders above, drawn through ctx.map onto the tilted face.
+
+// px per unit and offsets for the face at height z
+function knobMapAt(ctx, V, z) {
+    const F = KnobShapes.faceMap(V, z);
+    return { sx: ctx.k * F.sx, sy: ctx.k * F.sy, tx: ctx.c, ty: ctx.c + ctx.k * F.ty };
+}
+
+// One frame's walls and printing, worked out once per frame
+function knob3d(ctx, v) {
+    if (!ctx.d3) ctx.d3 = { walls: KnobShapes.walls(ctx.s, v), prints: KnobShapes.prints(ctx.s, v) };
+    return ctx.d3;
+}
+
+// A sweep (KnobShapes wall rings) as an angular gradient on node n, centered
+// on unit point C: Figma's angular gradient starts along +x of its unit box
+// and turns clockwise, like the studio's conic gradient
+function knobSweepPaint(ctx, n, C, stops) {
+    const c = knobPt(ctx, C[0], C[1]);
+    const R = 2 * Math.max(1, n.width, n.height);
+    const cx = c[0] - n.x;
+    const cy = c[1] - n.y;
+    return {
+        type: 'GRADIENT_ANGULAR',
+        gradientTransform: [[n.width / R, 0, 0.5 - cx / R], [0, n.height / R, 0.5 - cy / R]],
+        gradientStops: stops
+    };
+}
+
+// A wall: smooth round bands as one vector each, shaded by a sweep; other
+// walls' quads merged into one vector per color, in the order the colors
+// first appear (far side first); then the rim light along the top
+function knobBuildWall(ctx, name, w) {
+    if (!w || !(w.faces.length || (w.rings && w.rings.length))) return null;
+    const nodes = [];
+    (w.rings || []).forEach((R, i) => {
+        const n = knobVector(ctx, name + '_band_' + (i + 1), R.polys);
+        const paint = knobSweepPaint(ctx, n, R.center, R.stops.map(st => ({ position: st[0], color: Object.assign(hexToRgb(st[1]), { a: 1 }) })));
+        n.fills = [paint];
+        // Quads share edges; a hairline in the same sweep hides the seams
+        n.strokes = [paint];
+        n.strokeWeight = 0.6;
+        n.strokeAlign = 'CENTER';
+        n.strokeJoin = 'ROUND';
+        nodes.push(n);
+    });
+    const byColor = new Map();
+    w.faces.forEach(f => {
+        if (!byColor.has(f.color)) byColor.set(f.color, []);
+        byColor.get(f.color).push(f.pts);
+    });
+    byColor.forEach((polys, color) => {
+        const n = knobVector(ctx, name + '_' + color.slice(1), polys);
+        n.fills = knobSolid(color);
+        // Quads share edges; a hairline in their own color hides the seams
+        n.strokes = knobSolid(color);
+        n.strokeWeight = 0.6;
+        n.strokeAlign = 'CENTER';
+        n.strokeJoin = 'ROUND';
+        nodes.push(n);
+    });
+    // Shadow near the base and the grooves, one overlay per band
+    w.shades.forEach((sh, i) => {
+        const n = knobVector(ctx, name + '_shade_' + (i + 1), sh.polys);
+        n.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: sh.alpha }];
+        nodes.push(n);
+    });
+    const byAlpha = new Map();
+    w.rims.forEach(r => {
+        if (!byAlpha.has(r.alpha)) byAlpha.set(r.alpha, []);
+        byAlpha.get(r.alpha).push([r.a, r.b]);
+    });
+    byAlpha.forEach((lines, alpha) => {
+        const n = knobVector(ctx, name + '_rim', lines, true);
+        n.fills = [];
+        n.strokes = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 }, opacity: alpha }];
+        n.strokeWeight = 1;
+        n.strokeCap = 'ROUND';
+        nodes.push(n);
+    });
+    if (w.rimRing) {
+        const n = knobVector(ctx, name + '_rim', w.rimRing.runs, true);
+        n.fills = [];
+        n.strokes = [knobSweepPaint(ctx, n, w.rimRing.center, w.rimRing.stops.map(st => ({ position: st[0], color: { r: 1, g: 1, b: 1, a: st[1] } })))];
+        n.strokeWeight = 1;
+        n.strokeCap = 'ROUND';
+        n.strokeJoin = 'ROUND';
+        nodes.push(n);
+    }
+    return knobGroupOf(ctx, name, nodes);
+}
+
+// The shadow the base casts, and the tight one where it meets the panel.
+// A canvas blur(σ) looks like a Figma layer blur of about 2σ.
+function knobBuild3dShadows(ctx, v) {
+    if (!ctx.s.body.on) return null;
+    const S = KnobShapes.shadows3d(ctx.s, v);
+    const nodes = [];
+    [['drop_shadow', S.drop], ['contact_shadow', S.contact]].forEach(([name, d]) => {
+        if (!(d.blur > 0 && d.alpha > 0)) return;
+        const n = knobVector(ctx, name, [S.base.map(p => [p[0] + d.off[0], p[1] + d.off[1]])]);
+        n.fills = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: d.alpha }];
+        // Newer Figma wants a blurType on layer blurs; older versions may not know it
+        const blur = { type: 'LAYER_BLUR', radius: 2 * d.blur * ctx.k, visible: true };
+        try {
+            n.effects = [Object.assign({ blurType: 'NORMAL' }, blur)];
+        } catch (e) {
+            n.effects = [blur];
+        }
+        nodes.push(n);
+    });
+    return knobGroupOf(ctx, 'shadows', nodes);
+}
+
+function knobBuildIndex(ctx) {
+    const s = ctx.s;
+    if (!s.body.on || !s.print.index) return null;
+    const n = knobVector(ctx, 'index_mark', [KnobShapes.indexMark(s)]);
+    n.fills = knobSolid(s.print.indexColor);
+    return n;
+}
+
+// Text outlines at font size 100, centered on 0, 0 the way the canvas
+// centers text (textAlign center, textBaseline middle), as closed polylines
+const knobGlyphCache = new Map();
+function knobGlyphs(text, font) {
+    const key = font.family + '/' + font.style + '/' + text;
+    if (knobGlyphCache.has(key)) return knobGlyphCache.get(key);
+    const t = figma.createText();
+    figma.currentPage.appendChild(t);
+    t.fontName = font;
+    t.fontSize = 100;
+    t.characters = text;
+    t.textAutoResize = 'WIDTH_AND_HEIGHT';
+    t.x = 0;
+    t.y = 0;
+    const cx = t.width / 2;
+    const cy = t.height / 2;
+    const vec = figma.flatten([t]);
+    const polys = [];
+    vec.vectorPaths.forEach(p => knobPathPolys(p.data).forEach(P => polys.push(P.map(q => [q[0] + vec.x - cx, q[1] + vec.y - cy]))));
+    vec.remove();
+    knobGlyphCache.set(key, polys);
+    return polys;
+}
+
+// SVG-style path data (M, L, Q, C, Z, absolute) to polylines, curves in 6 steps
+function knobPathPolys(data) {
+    const tok = String(data).match(/[MLQCZmlqcz]|-?\d*\.?\d+(?:e[-+]?\d+)?/g) || [];
+    const polys = [];
+    let P = null;
+    let at = [0, 0];
+    let i = 0;
+    const num = () => Number(tok[i++]);
+    let cmd = '';
+    while (i < tok.length) {
+        if (/[A-Za-z]/.test(tok[i])) cmd = tok[i++].toUpperCase();
+        if (cmd === 'Z') {
+            if (P && P.length > 2) polys.push(P);
+            P = null;
+            continue;
+        }
+        if (cmd === 'M') {
+            if (P && P.length > 2) polys.push(P);
+            at = [num(), num()];
+            P = [at];
+            cmd = 'L';
+            continue;
+        }
+        if (!P) P = [at];
+        if (cmd === 'L') at = [num(), num()];
+        else if (cmd === 'Q' || cmd === 'C') {
+            const pts = [at];
+            const n = cmd === 'Q' ? 2 : 3;
+            for (let j = 0; j < n; j++) pts.push([num(), num()]);
+            for (let s = 1; s <= 6; s++) {
+                const t = s / 6;
+                let q = pts.slice();
+                while (q.length > 1) q = q.slice(1).map((b, j) => [q[j][0] + (b[0] - q[j][0]) * t, q[j][1] + (b[1] - q[j][1]) * t]);
+                P.push(q[0]);
+            }
+            at = pts[pts.length - 1];
+            continue;
+        } else {
+            i++;
+            continue;
+        }
+        P.push(at);
+    }
+    if (P && P.length > 2) polys.push(P);
+    return polys;
+}
+
+// Printing: quads, and glyphs (needs ctx.font, else they're left out).
+// Each color and opacity becomes one vector.
+function knobBuildPrints(ctx, name, items) {
+    if (!items || !items.length) return null;
+    const groups = new Map();
+    const add = (color, alpha, polys) => {
+        const key = color + '/' + alpha;
+        if (!groups.has(key)) groups.set(key, { color, alpha, polys: [] });
+        groups.get(key).polys.push(...polys);
+    };
+    items.forEach(it => {
+        const color = it.color || ctx.s.print.color;
+        if (it.pts) { add(color, it.alpha, [it.pts]); return; }
+        if (!ctx.font) return;
+        const m = it.m;
+        const k = it.size / 100;
+        add(color, it.alpha, knobGlyphs(it.text, ctx.font).map(P => P.map(q => {
+            const x = q[0] * k;
+            const y = q[1] * k;
+            return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+        })));
+    });
+    const nodes = [];
+    groups.forEach(g => {
+        // Even-odd keeps the holes in letters whatever way the outlines run
+        const n = knobVector(ctx, name, g.polys, false, 'EVENODD');
+        n.fills = [{ type: 'SOLID', color: hexToRgb(g.color), opacity: g.alpha }];
+        nodes.push(n);
+    });
+    return knobGroupOf(ctx, name, nodes);
+}
+
+// A face: the usual layers drawn onto it through its tilt. The body's top
+// carries whatever isn't raised above it; the pointer goes on the highest
+// face that holds it (KnobShapes.view's host).
+function knobBuildFace(ctx, v, which) {
+    const s = ctx.s;
+    const V = KnobShapes.view(s);
+    const sp = JSON.parse(JSON.stringify(s));
+    let z;
+    let parts;
+    if (which === 'body') {
+        sp.body.shadow = 0;
+        z = V.zB;
+        parts = { body: true, cap: !V.capOn, bar: !V.capOn && !V.barOn, ring: s.ring.over && !V.capOn, pointer: V.host === 'body' };
+    } else if (which === 'cap') {
+        if (!V.capOn) return null;
+        sp.cap.shadow = 0;
+        sp.cap.size = s.cap.size * V.capTop;
+        sp.cap.bevel = s.cap.bevel * V.capTop;
+        z = V.zC;
+        parts = { cap: true, bar: !V.barOn, ring: s.ring.over, pointer: V.host === 'cap' };
+    } else {
+        if (!V.barOn) return null;
+        sp.bar.shadow = 0;
+        z = V.zR;
+        parts = { bar: true, pointer: V.host === 'bar' };
+    }
+    const fc = Object.assign({}, ctx, { s: sp, map: knobMapAt(ctx, V, z) });
+    const nodes = [];
+    if (parts.body) nodes.push(knobBuildBody(fc, v));
+    if (parts.cap) nodes.push(knobBuildCap(fc, v));
+    if (parts.ring) nodes.push(knobBuildTrack(fc), knobBuildValue(fc, v));
+    if (parts.bar) nodes.push(knobBuildBar(fc, v));
+    if (parts.pointer) nodes.push(knobBuildPointer(fc, v));
+    return knobGroupOf(ctx, which + '_top', nodes);
+}
+
+// Bottom to top, like KnobCore's render3d. Round walls and the shadow of a
+// round base look the same at every angle, so strips clone them.
+const KNOB_LAYERS_3D = [
+    { fixed: true, build: knobBuildTicks },
+    { fixed: true, build: ctx => (ctx.s.ring.over ? null : knobBuildTrack(ctx)) },
+    { fixed: false, build: (ctx, v) => (ctx.s.ring.over ? null : knobBuildValue(ctx, v)) },
+    { fixed: true, build: knobBuildIndex },
+    { fixed: s => s.body.shape === 'circle', build: knobBuild3dShadows },
+    { fixed: s => s.body.shape === 'circle' && !(s.depth.slots > 0), build: (ctx, v) => knobBuildWall(ctx, 'body_wall', knob3d(ctx, v).walls.body) },
+    { fixed: false, build: (ctx, v) => knobBuildPrints(ctx, 'body_wall_print', knob3d(ctx, v).prints.bodyWall) },
+    { fixed: false, build: (ctx, v) => knobBuildFace(ctx, v, 'body') },
+    { fixed: false, build: (ctx, v) => knobBuildPrints(ctx, 'body_print', knob3d(ctx, v).prints.bodyFace) },
+    { fixed: s => s.cap.shape === 'circle', build: (ctx, v) => knobBuildWall(ctx, 'cap_wall', knob3d(ctx, v).walls.cap) },
+    { fixed: false, build: (ctx, v) => knobBuildPrints(ctx, 'cap_wall_print', knob3d(ctx, v).prints.capWall) },
+    { fixed: false, build: (ctx, v) => knobBuildFace(ctx, v, 'cap') },
+    { fixed: false, build: (ctx, v) => knobBuildPrints(ctx, 'cap_print', knob3d(ctx, v).prints.capFace) },
+    { fixed: false, build: (ctx, v) => knobBuildWall(ctx, 'bar_wall', knob3d(ctx, v).walls.bar) },
+    { fixed: false, build: (ctx, v) => knobBuildFace(ctx, v, 'bar') }
+];
+
 // Bottom to top. Fixed layers look the same in every frame, so strips clone
 // them from the first frame instead of rebuilding.
 // `fixed` can depend on the spec: shapes that turn with the value rebuild.
@@ -1778,7 +2530,7 @@ function createSpecKnobFrame(s, v, name, template, font) {
     f.clipsContent = true;
     const ctx = { s, f, c: C / 2, k: knobSpecScale(s), L: knobSpecLayout(s), font: font || null };
     const fixed = [];
-    KNOB_LAYERS.forEach((layer, i) => {
+    (KnobShapes.deep(s) ? KNOB_LAYERS_3D : KNOB_LAYERS).forEach((layer, i) => {
         const isFixed = typeof layer.fixed === 'function' ? layer.fixed(s) : layer.fixed;
         let node = null;
         if (isFixed && template) {

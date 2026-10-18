@@ -1,8 +1,8 @@
 "use strict";
 
 // Version constants
-const VERSION = "2.2.0";
-const BUILD_DATE = "10-11-2026";
+const VERSION = "2.3.0";
+const BUILD_DATE = "10-18-2026";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -17,6 +17,8 @@ const UI_SIZE_DEFAULT = { width: 900, height: 540 };
 const UI_SIZE_MIN = { width: 360, height: 400 };
 const UI_SIZE_KEY = 'ui_size_v2'; // v2: landscape layout, ignore sizes saved for the old portrait one
 const UI_SIZE_MAX = { width: 1600, height: 1400 };
+// Agent mode's compact bar (ui.html .agent-mini)
+const AGENT_MINI_SIZE = { width: 340, height: 64 };
 
 function clampUiSize(size) {
     const w = Math.round(Number(size && size.width) || UI_SIZE_DEFAULT.width);
@@ -195,6 +197,11 @@ const PRO_SPEC_MESSAGES = new Set([
 ]);
 // My designs: saving, deleting and importing are PRO
 const DESIGN_MESSAGES = new Set(['designs-save', 'designs-delete', 'designs-import']);
+// Agent mode: everything but agent-hello, which only reports the license state
+const AGENT_MESSAGES = new Set([
+    'agent-enable', 'agent-schema', 'agent-build', 'agent-update', 'agent-snapshot', 'agent-read-selection', 'agent-strip',
+    'agent-panel-build', 'agent-panel-update', 'agent-place', 'agent-arrange', 'agent-remove', 'agent-label', 'agent-layout', 'agent-export'
+]);
 
 // True (and tells the UI to show the PRO dialog) when msg asks for PRO work
 // without a license
@@ -202,12 +209,14 @@ function proBlocked(msg) {
     if (proUnlocked) return false;
     let name = '';
     let feature = false;
+    let about = '';
     if (msg.type === 'create-gallery-panel') name = 'This layout template';
     else if (DESIGN_MESSAGES.has(msg.type)) { name = 'Saving designs'; feature = true; }
+    else if (AGENT_MESSAGES.has(msg.type)) { name = 'Agent mode'; feature = true; about = 'agent'; }
     else if (PRO_SPEC_MESSAGES.has(msg.type) && msg.spec && msg.spec.tier === 'pro') name = msg.spec.name || 'This design';
     else return false;
     if (msg.type === 'export-strip') figma.ui.postMessage({ type: 'export-strip-status', id: msg.id, phase: 'cancelled' });
-    figma.ui.postMessage({ type: 'pro-required', name, feature });
+    figma.ui.postMessage({ type: 'pro-required', name, feature, about });
     return true;
 }
 
@@ -280,6 +289,10 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
             console.error('Invalid message received:', msg);
             return;
         }
+        if (msg.type === 'agent-hello' || AGENT_MESSAGES.has(msg.type)) {
+            yield handleAgentMessage(msg);
+            return;
+        }
         if (PRO_SPEC_MESSAGES.has(msg.type) || DESIGN_MESSAGES.has(msg.type) || msg.type === 'create-gallery-panel') {
             yield proReady;
             if (proBlocked(msg)) return;
@@ -290,15 +303,19 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
         figma.ui.resize(size.width, size.height);
         if (msg.persist) yield figma.clientStorage.setAsync(UI_SIZE_KEY, size);
     }
+    else if (msg.type === 'agent-mini') {
+        // Agent mode's compact bar while the agent builds, then the window's
+        // own size back. Neither is saved as the user's window size.
+        if (msg.on) figma.ui.resize(AGENT_MINI_SIZE.width, AGENT_MINI_SIZE.height);
+        else {
+            const size = clampUiSize(msg.size);
+            figma.ui.resize(size.width, size.height);
+        }
+    }
     else if (msg.type === 'create-knob-spec') {
         // Knob studio: one knob at the stage's value, or the full strip
         try {
-            const spec = normalizeKnobSpec(msg.spec);
-            const font = yield knobLabelFont(spec);
-            const node = msg.animate
-                ? createSpecKnobStrip(spec, msg.frames, msg.gap, msg.axis, font)
-                : createSpecKnob(spec, msg.value, font);
-            applyExportScale(node, msg.x2);
+            const { spec, node } = yield buildKnobFromMsg(msg, msg.animate);
             placeAtViewportCenter(node);
             figma.currentPage.selection = [node];
             figma.viewport.scrollAndZoomIntoView([node]);
@@ -319,12 +336,7 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
                 figma.notify('Select a knob or strip made in the studio first.');
                 return;
             }
-            const spec = normalizeKnobSpec(msg.spec);
-            const font = yield knobLabelFont(spec);
-            const fresh = kind === 'strip'
-                ? createSpecKnobStrip(spec, msg.frames, msg.gap, msg.axis, font)
-                : createSpecKnob(spec, msg.value, font);
-            applyExportScale(fresh, msg.x2);
+            const { spec, node: fresh } = yield buildKnobFromMsg(msg, kind === 'strip');
             replaceNode(target, fresh);
             figma.currentPage.selection = [fresh];
             figma.notify(`Updated ${kind === 'strip' ? 'strip' : 'knob'}: ${spec.name}`);
@@ -587,6 +599,13 @@ figma.ui.onmessage = (msg) => __awaiter(void 0, void 0, void 0, function* () {
     }
     else if (msg.type === 'export-strip-cancel') {
         if (stripExportJob && stripExportJob.id === msg.id) stripExportJob.cancel = true;
+    }
+    else if (msg.type === 'export-ui') {
+        // Not awaited: Cancel messages must get through while it runs
+        exportUiFromStudio(msg);
+    }
+    else if (msg.type === 'export-ui-cancel') {
+        if (uiExportJob && uiExportJob.id === msg.id) uiExportJob.cancel = true;
     }
     else if (msg.type === 'duplicate-knob') {
         // FIXED: Added try-catch around knob duplication
@@ -928,7 +947,7 @@ const KnobShapes = (() => {
     pointer: { shape: 'line', color: '#FFFFFF', width: 5, length: 18, inset: 6, round: true, glow: 0, edge: 0, edgeColor: '#000000' },
     ring: { style: 'arc', width: 6, gap: 5, count: 21, round: false, track: true, trackColor: '#3A3A42', value: true, valueColor: '#8A5CF6', opacity: 100, glow: 0, bipolar: false, single: false, over: false },
     ticks: { on: false, count: 11, color: '#8C8898', length: 7, width: 1.5, gap: 4, major: 0, majorLength: 11, labels: 'none', labelSize: 9, labelColor: '#C8C6D0' },
-    depth: { on: false, tilt: 26, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
+    depth: { on: false, tilt: 26, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, round: 0, scoops: 0, scoopSize: 12, scoopDepth: 50, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
     print: { scale: 'none', from1: false, mark: 'start', color: '#F2F2F2', size: 8, radius: 42, ticks: 0, at: 30, index: false, indexColor: '#1A1917', label: '', labelColor: '#141414', labelSize: 7, stripe: false, stripeColor: '#E8322A', stripeWidth: 5 }
   };
 
@@ -947,6 +966,7 @@ const KnobShapes = (() => {
     'ticks.major': [0, 10], 'ticks.majorLength': [1, 30], 'ticks.labelSize': [4, 24],
     'depth.tilt': [-60, 60], 'depth.persp': [0, 100], 'depth.height': [0, 80], 'depth.flare': [0, 40], 'depth.shine': [0, 100], 'depth.rim': [0, 100],
     'depth.grooves': [0, 12], 'depth.slots': [0, 36], 'depth.slotWidth': [2, 50], 'depth.slotDepth': [0, 8], 'depth.band': [0, 60], 'depth.bandInset': [0, 6],
+    'depth.round': [0, 15], 'depth.scoops': [0, 16], 'depth.scoopSize': [4, 30], 'depth.scoopDepth': [10, 95],
     'depth.capHeight': [0, 60], 'depth.capTaper': [0, 60], 'depth.capShine': [0, 100], 'depth.capRim': [0, 100], 'depth.capGrooves': [0, 12],
     'depth.barHeight': [0, 40], 'depth.barShine': [0, 100], 'depth.cast': [0, 200],
     'print.size': [3, 20], 'print.radius': [10, 60], 'print.ticks': [0, 8], 'print.at': [5, 95], 'print.labelSize': [3, 24], 'print.stripeWidth': [1, 15]
@@ -1021,28 +1041,44 @@ const KnobShapes = (() => {
 
   const circle = (r, n) => radial(() => r, n || SEG, 0);
 
-  // A round part's outline: R units out, with an edge profile
-  function outline(shape, R, teeth, depth, tip, rot) {
+  // The radius function r(u) of an edge traced round the turn, and how many
+  // points it needs; null for shapes with corners (polygon, teardrop)
+  function profile(shape, R, teeth, depth) {
     const n = Math.max(3, Math.round(teeth));
     const d = Math.max(0, Math.min(depth, R * 0.5));
     if (shape === 'knurl') {
       // Round notches cut into the rim
       const w = 0.45;
-      return radial(u => {
-        const x = Math.abs(frac(u * n) - 0.5);
-        return x < w / 2 ? R - d * Math.sqrt(1 - Math.pow(2 * x / w, 2)) : R;
-      }, Math.max(SEG, n * 16), rot);
+      return {
+        rf: u => {
+          const x = Math.abs(frac(u * n) - 0.5);
+          return x < w / 2 ? R - d * Math.sqrt(1 - Math.pow(2 * x / w, 2)) : R;
+        },
+        n: Math.max(SEG, n * 16)
+      };
     }
-    if (shape === 'fluted') return radial(u => R - d * (0.5 - 0.5 * Math.cos(2 * Math.PI * u * n)), Math.max(SEG, n * 12), rot);
+    if (shape === 'fluted') return { rf: u => R - d * (0.5 - 0.5 * Math.cos(2 * Math.PI * u * n)), n: Math.max(SEG, n * 12) };
     if (shape === 'gear') {
       // Flat-bottomed notches with short ramps
       const w = 0.4;
       const ramp = 0.06;
-      return radial(u => {
-        const x = Math.abs(frac(u * n) - 0.5);
-        return R - d * Math.max(0, Math.min(1, (w / 2 + ramp - x) / ramp));
-      }, Math.max(SEG, n * 24), rot);
+      return {
+        rf: u => {
+          const x = Math.abs(frac(u * n) - 0.5);
+          return R - d * Math.max(0, Math.min(1, (w / 2 + ramp - x) / ramp));
+        },
+        n: Math.max(SEG, n * 24)
+      };
     }
+    if (shape === 'circle') return { rf: () => R, n: SEG };
+    return null;
+  }
+
+  // A round part's outline: R units out, with an edge profile
+  function outline(shape, R, teeth, depth, tip, rot) {
+    const n = Math.max(3, Math.round(teeth));
+    const p = shape === 'circle' ? null : profile(shape, R, teeth, depth);
+    if (p) return radial(p.rf, p.n, rot);
     if (shape === 'polygon') {
       // A flat side faces the pointer
       const out = [];
@@ -1355,8 +1391,11 @@ const KnobShapes = (() => {
   // band's center) through its faces' colors, returned as `rings` with no
   // faces, and its rim light is one sweep along the top (`rimRing`).
   // Sweep stops are [t, value], t the turn clockwise on screen from +x, 0..1.
+  // look.tops, if given, is the top height at each point of P instead of z1
+  // (a wall cut down under scoops); such a wall is never smooth.
   function wall(V, P, z0, z1, rAt, look) {
     const sgn = orient(P);
+    const topAt = i => (look.tops ? Math.max(z0, look.tops[i]) : z1);
     const n = P.length;
     const grooves = Math.round(look.grooves);
     const bands = grooves ? grooves * 2 + 1 : look.bands;
@@ -1390,6 +1429,12 @@ const KnobShapes = (() => {
       for (let i = 0; i < n; i++) {
         const p = P[i];
         const q = P[(i + 1) % n];
+        const tp = topAt(i);
+        const tq = topAt((i + 1) % n);
+        const zpa = z0 + (tp - z0) * u0;
+        const zpb = z0 + (tp - z0) * u1;
+        const zqa = z0 + (tq - z0) * u0;
+        const zqb = z0 + (tq - z0) * u1;
         const tx = q[0] - p[0];
         const ty = q[1] - p[1];
         const tl = Math.hypot(tx, ty) || 1;
@@ -1398,7 +1443,7 @@ const KnobShapes = (() => {
         // Outward normal, tipped up where the wall narrows toward the top
         let nx = sgn * ty / tl;
         let ny = -sgn * tx / tl;
-        let nz = (ra - rb) * (Math.hypot(mx, my) || 1) / Math.max(0.01, zb - za);
+        let nz = (ra - rb) * (Math.hypot(mx, my) || 1) / Math.max(0.01, (zpb - zpa + zqb - zqa) / 2);
         const m = Math.hypot(nx, ny, nz);
         nx /= m; ny /= m; nz /= m;
         if (nx * view3[0] + ny * view3[1] + nz * view3[2] <= 0.001) continue;
@@ -1409,7 +1454,7 @@ const KnobShapes = (() => {
           spec = Math.round(16 * spec) / 16;
         }
         const c = mixRgb(mixRgb(dark, lit, Math.min(1, 0.12 + 0.95 * dif)), [255, 255, 255], spec);
-        const pts = [proj(V, p[0] * ra, p[1] * ra, za), proj(V, q[0] * ra, q[1] * ra, za), proj(V, q[0] * rb, q[1] * rb, zb), proj(V, p[0] * rb, p[1] * rb, zb)];
+        const pts = [proj(V, p[0] * ra, p[1] * ra, zpa), proj(V, q[0] * ra, q[1] * ra, zqa), proj(V, q[0] * rb, q[1] * rb, zqb), proj(V, p[0] * rb, p[1] * rb, zpb)];
         if (shade.alpha > 0) shade.polys.push(pts);
         if (look.smooth) {
           ring.polys.push(pts);
@@ -1463,13 +1508,163 @@ const KnobShapes = (() => {
     return { faces: faces.map(f => ({ pts: f.pts, color: f.color })), shades: shades.filter(sh => sh.polys.length), rims: rims.filter(r => r.alpha > 0) };
   }
 
-  // Narrow flat-bottomed slots up the body wall, turning with the knob
+  // Narrow flat-bottomed slots up the body wall, turning with the knob. The
+  // wall follows the body's own edge, so slots sit in a knurled or fluted
+  // top's valleys (both center on the half step) when the counts match
   function slotted(s, v) {
     const d = s.depth;
+    const b = s.body;
     const count = Math.round(d.slots);
     const w = d.slotWidth / 100;
     const rot = pointerDeg(s, v);
-    return radial(u => (Math.abs(frac(u * count) - 0.5) < w / 2 ? 50 - d.slotDepth : 50), count * 48, rot);
+    const p = profile(b.shape, 50, b.teeth, b.depth) || { rf: () => 50, n: SEG };
+    return radial(u => (Math.abs(frac(u * count) - 0.5) < w / 2 ? p.rf(u) - d.slotDepth : p.rf(u)), Math.max(count * 48, p.n), rot);
+  }
+
+  // ----- Carving a round body's top: a rounded edge and scoops -----
+  // The rounded edge rolls the top face over into the side along a quarter
+  // circle `round` units across. Scoops are thumb-grip dishes cut down into
+  // the top edge: each a paraboloid centered just outside the rim, `scoopSize`
+  // units across on top and `scoopDepth`% of the height deep at the rim, so
+  // the base under them stays whole. They sit between the pointer's steps and
+  // turn with the knob; the light stays put. The top is the lowest of the
+  // flat face, the rounded edge and the dishes.
+  const wrapPi = x => x - 2 * Math.PI * Math.round(x / (2 * Math.PI));
+  function carve(s, v) {
+    if (!deep(s) || !s.body.on || s.body.shape !== 'circle') return null;
+    const d = s.depth;
+    const zB = Math.max(0.01, d.height);
+    const e = Math.min(d.round, zB * 0.9);
+    const n = Math.round(d.scoops);
+    let S = null;
+    if (n > 0) {
+      // Half the angle a scoop of size a takes on the rim; shrink scoops
+      // that would run into each other
+      const spread = a => {
+        const dc = 50 + 0.3 * a;
+        return Math.acos(Math.min(1, (2500 + dc * dc - a * a) / (100 * dc)));
+      };
+      let a = d.scoopSize;
+      while (a > 2 && spread(a) > 0.46 * Math.PI * 2 / n) a -= 0.25;
+      S = { n, a, dc: 50 + 0.3 * a, half: spread(a), Dp: zB * d.scoopDepth / 100 / 0.91, rot: rad(pointerDeg(s, v)) };
+    }
+    if (!(e > 0) && !S) return null;
+    // About 16 steps across each scoop: smooth, and a strip still builds in
+    // reasonable time
+    const C = { e, S, zB, nt: S ? Math.max(SEG, n * 24) : SEG };
+    // The flat face's edge at angle t: the rounded edge's start, or where a
+    // scoop cuts in
+    C.inner = t => Math.min(50 - e, scoopEdge(C.S, t));
+    return C;
+  }
+
+  // The scoop nearest angle t: its center angle c and how far t is from it
+  function scoopAt(S, t) {
+    const step = 2 * Math.PI / S.n;
+    const c = S.rot + step * (Math.round((t - S.rot) / step - 0.5) + 0.5);
+    return { c, off: wrapPi(t - c) };
+  }
+
+  // Where the ray at angle t meets a scoop's edge on top, or the rim (50)
+  function scoopEdge(S, t) {
+    if (!S) return 50;
+    const o = scoopAt(S, t).off;
+    if (Math.abs(o) >= S.half) return 50;
+    const h = S.dc * Math.sin(o);
+    return Math.min(50, S.dc * Math.cos(o) - Math.sqrt(Math.max(0, S.a * S.a - h * h)));
+  }
+
+  // Height of the carved top at x, y and its normal
+  function carvedTop(C, x, y) {
+    const r = Math.hypot(x, y) || 1e-6;
+    let z = C.zB;
+    let nrm = [0, 0, 1];
+    if (C.e > 0 && r > 50 - C.e) {
+      const sn = Math.min(1, (r - 50 + C.e) / C.e);
+      const cs = Math.sqrt(1 - sn * sn);
+      z = C.zB - C.e + C.e * cs;
+      nrm = [sn * x / r, sn * y / r, cs];
+    }
+    if (C.S) {
+      const S = C.S;
+      const c = scoopAt(S, Math.atan2(y, x)).c;
+      const dx = x - S.dc * Math.cos(c);
+      const dy = y - S.dc * Math.sin(c);
+      const q = (dx * dx + dy * dy) / (S.a * S.a);
+      if (q < 1) {
+        const zd = C.zB - S.Dp * (1 - q);
+        if (zd < z) {
+          z = zd;
+          const gx = -2 * S.Dp * dx / (S.a * S.a);
+          const gy = -2 * S.Dp * dy / (S.a * S.a);
+          const m = Math.hypot(gx, gy, 1);
+          nrm = [gx / m, gy / m, 1 / m];
+        }
+      }
+    }
+    return { z, nrm };
+  }
+
+  // The flat top face's outline, or null when the top isn't carved
+  function faceOutline(s, v) {
+    const C = carve(s, v);
+    return C ? radial(u => C.inner(2 * Math.PI * u), C.nt, 0) : null;
+  }
+
+  // The carved part of the top: the rounded edge and the scoops' dishes,
+  // from the flat face's edge out to the rim, as wall-like quads lit by the
+  // one light in the side colors, plus light catching each scoop's lip.
+  // Returns { faces, shades, rims } like wall(), or null.
+  function lip(s, v) {
+    const C = carve(s, v);
+    if (!C) return null;
+    const V = view(s);
+    const look = wallLook(s, 'body');
+    const lit = rgbOf(look.c1);
+    const dark = rgbOf(look.c2);
+    const view3 = [0, -V.st, V.ct];
+    const half = [LIGHT[0] + view3[0], LIGHT[1] + view3[1], LIGHT[2] + view3[2]];
+    const hm = Math.hypot(half[0], half[1], half[2]);
+    const steps = 6;
+    const faces = [];
+    const rims = [];
+    const at = (t, r) => {
+      const x = r * Math.cos(t);
+      const y = r * Math.sin(t);
+      return proj(V, x, y, carvedTop(C, x, y).z);
+    };
+    for (let i = 0; i < C.nt; i++) {
+      const t0 = 2 * Math.PI * i / C.nt;
+      const t1 = 2 * Math.PI * (i + 1) / C.nt;
+      const r0 = C.inner(t0);
+      const r1 = C.inner(t1);
+      if (r0 > 49.999 && r1 > 49.999) continue;
+      for (let j = 0; j < steps; j++) {
+        const ra0 = r0 + (50 - r0) * j / steps;
+        const ra1 = r0 + (50 - r0) * (j + 1) / steps;
+        const rb0 = r1 + (50 - r1) * j / steps;
+        const rb1 = r1 + (50 - r1) * (j + 1) / steps;
+        const tm = (t0 + t1) / 2;
+        const rm = (ra0 + ra1 + rb0 + rb1) / 4;
+        const mx = rm * Math.cos(tm);
+        const my = rm * Math.sin(tm);
+        const T = carvedTop(C, mx, my);
+        const N = T.nrm;
+        if (N[0] * view3[0] + N[1] * view3[1] + N[2] * view3[2] <= 0.001) continue;
+        const dif = Math.round(20 * Math.max(0, N[0] * LIGHT[0] + N[1] * LIGHT[1] + N[2] * LIGHT[2])) / 20;
+        const spec = Math.round(16 * Math.min(1, Math.pow(Math.max(0, (N[0] * half[0] + N[1] * half[1] + N[2] * half[2]) / hm), GLOSS) * look.shine)) / 16;
+        const c = mixRgb(mixRgb(dark, lit, Math.min(1, 0.12 + 0.95 * dif)), [255, 255, 255], spec);
+        const pts = [at(t0, ra0), at(t1, rb0), at(t1, rb1), at(t0, ra1)];
+        faces.push({ pts, color: hexOf(c), depth: mx * view3[0] + my * view3[1] + T.z * view3[2] });
+        // Light catching a scoop's lip, where its dish faces the light
+        if (j === 0 && C.S && Math.min(r0, r1) < 50 - C.e - 0.01) {
+          const alpha = Math.round(10 * Math.min(1, look.rim * 1.5 * dif * dif)) / 10;
+          if (alpha > 0) rims.push({ a: pts[0], b: pts[1], alpha });
+        }
+      }
+    }
+    faces.sort((a, b) => a.depth - b.depth);
+    return { faces: faces.map(f => ({ pts: f.pts, color: f.color })), shades: [], rims };
   }
 
   function wallLook(s, part) {
@@ -1481,7 +1676,7 @@ const KnobShapes = (() => {
       return { c1: d.capC1, c2: d.capC2, shine: d.capShine / 100, rim: d.capRim / 100, grooves: d.capGrooves, ao: 0.3, bands: d.dome && d.capTaper > 0 ? (smooth ? 14 : 10) : (smooth ? 10 : 6), smooth };
     }
     if (part === 'bar') return { c1: d.barC1, c2: d.barC2, shine: d.barShine / 100, rim: 0.3, grooves: 0, ao: 0.3, bands: 3 };
-    const smooth = s.body.shape === 'circle' && !Math.round(d.grooves) && !(d.slots > 0);
+    const smooth = s.body.shape === 'circle' && !Math.round(d.grooves) && !(d.slots > 0) && !(Math.round(d.scoops) > 0);
     return { c1: d.c1, c2: d.c2, shine: d.shine / 100, rim: d.rim / 100, grooves: d.grooves, ao: 0.55, bands: smooth ? 16 : 8, smooth };
   }
 
@@ -1491,17 +1686,26 @@ const KnobShapes = (() => {
     const d = s.depth;
     const out = { body: null, cap: null, bar: null };
     if (s.body.on) {
-      const side = d.slots > 0 ? slotted(s, v) : body(s, v);
-      const look = wallLook(s, 'body');
+      // A carved top lowers the wall: under the rounded edge everywhere,
+      // and down to each scoop's dish where one cuts the rim
+      const C = carve(s, v);
+      const side = C && C.S ? circle(50, C.nt) : d.slots > 0 ? slotted(s, v) : body(s, v);
+      let look = wallLook(s, 'body');
+      let top = V.zB;
+      if (C) {
+        top = V.zB - C.e;
+        look = Object.assign({}, look, { rim: C.e > 0 ? 0 : look.rim });
+        if (C.S) look.tops = side.map(p => carvedTop(C, p[0], p[1]).z);
+      }
       const band = d.band / 100;
       if (band > 0) {
         // A plain ring at the base, set in a little, under the shaped wall
         const inset = 1 - d.bandInset / 50;
-        const lo = wall(V, circle(50), 0, V.zB * band, u => inset * bodyAt(s, u * band), Object.assign({}, look, { rim: 0, grooves: 0, bands: 4, smooth: true }));
-        const hi = wall(V, side, V.zB * band, V.zB, u => bodyAt(s, band + u * (1 - band)), Object.assign({}, look, { ao: 0.15 }));
+        const lo = wall(V, circle(50), 0, V.zB * band, u => inset * bodyAt(s, u * band), Object.assign({}, look, { rim: 0, grooves: 0, bands: 4, smooth: true, tops: null }));
+        const hi = wall(V, side, V.zB * band, top, u => bodyAt(s, band + u * (1 - band)), Object.assign({}, look, { ao: 0.15 }));
         out.body = { faces: lo.faces.concat(hi.faces), shades: lo.shades.concat(hi.shades), rims: hi.rims, rings: (lo.rings || []).concat(hi.rings || []), rimRing: hi.rimRing };
       } else {
-        out.body = wall(V, side, 0, V.zB, u => bodyAt(s, u), look);
+        out.body = wall(V, side, 0, top, u => bodyAt(s, u), look);
       }
     }
     if (V.capOn) out.cap = wall(V, cap(s, v, 0), V.zB, V.zC, u => capAt(s, u), wallLook(s, 'cap'));
@@ -1677,7 +1881,8 @@ const KnobShapes = (() => {
   return {
     START, SWEEP, SEG, BASE, LIMITS, ENUMS, FILLS, BRUSH_STOPS, TEX,
     startDeg, sweepDeg, ringShown, labelsOn, pointerDeg, turns, outline, innerRadius, body, cap, capRadius, capInner, bar, maxRadius, bounds,
-    brush, grain, shadowShift, layout, ticks, labels, valueSpan, dotAngles, litDots, deep, markDeg, bodyAt, capAt, view, proj, faceMap, walls, shadows3d, indexMark, prints, reach3d
+    brush, grain, shadowShift, layout, ticks, labels, valueSpan, dotAngles, litDots, deep, markDeg, bodyAt, capAt, view, proj, faceMap, walls, shadows3d, indexMark, prints, reach3d,
+    faceOutline, lip
   };
 })();
 
@@ -2233,7 +2438,7 @@ function knobMapAt(ctx, V, z) {
 
 // One frame's walls and printing, worked out once per frame
 function knob3d(ctx, v) {
-    if (!ctx.d3) ctx.d3 = { walls: KnobShapes.walls(ctx.s, v), prints: KnobShapes.prints(ctx.s, v) };
+    if (!ctx.d3) ctx.d3 = { walls: KnobShapes.walls(ctx.s, v), lip: KnobShapes.lip(ctx.s, v), prints: KnobShapes.prints(ctx.s, v) };
     return ctx.d3;
 }
 
@@ -2476,13 +2681,30 @@ function knobBuildFace(ctx, v, which) {
     }
     const fc = Object.assign({}, ctx, { s: sp, map: knobMapAt(ctx, V, z) });
     const nodes = [];
-    if (parts.body) nodes.push(knobBuildBody(fc, v));
+    if (parts.body) nodes.push(knobBuildCarvedBody(fc, v));
     if (parts.cap) nodes.push(knobBuildCap(fc, v));
     if (parts.ring) nodes.push(knobBuildTrack(fc), knobBuildValue(fc, v));
     if (parts.bar) nodes.push(knobBuildBar(fc, v));
     if (parts.pointer) nodes.push(knobBuildPointer(fc, v));
     return knobGroupOf(ctx, which + '_top', nodes);
 }
+
+// The body's top face, masked to the carved outline when the top has a
+// rounded edge or scoops. The face itself stays a full circle under the
+// mask, so its gradient and machined rings keep their center.
+function knobBuildCarvedBody(ctx, v) {
+    const face = knobBuildBody(ctx, v);
+    const P = face && KnobShapes.faceOutline(ctx.s, v);
+    if (!P) return face;
+    const mask = knobVector(ctx, 'carve_mask', [P]);
+    mask.fills = knobSolid('#FFFFFF');
+    mask.isMask = true;
+    // A mask clips the layers above it in its group
+    ctx.f.insertChild(ctx.f.children.indexOf(face), mask);
+    return knobGroupOf(ctx, 'body', [mask, face]);
+}
+
+const knobScooped = s => s.body.shape === 'circle' && Math.round(s.depth.scoops) > 0;
 
 // Bottom to top, like KnobCore's render3d. Round walls and the shadow of a
 // round base look the same at every angle, so strips clone them.
@@ -2492,8 +2714,10 @@ const KNOB_LAYERS_3D = [
     { fixed: false, build: (ctx, v) => (ctx.s.ring.over ? null : knobBuildValue(ctx, v)) },
     { fixed: true, build: knobBuildIndex },
     { fixed: s => s.body.shape === 'circle', build: knobBuild3dShadows },
-    { fixed: s => s.body.shape === 'circle' && !(s.depth.slots > 0), build: (ctx, v) => knobBuildWall(ctx, 'body_wall', knob3d(ctx, v).walls.body) },
+    { fixed: s => s.body.shape === 'circle' && !(s.depth.slots > 0) && !knobScooped(s), build: (ctx, v) => knobBuildWall(ctx, 'body_wall', knob3d(ctx, v).walls.body) },
     { fixed: false, build: (ctx, v) => knobBuildPrints(ctx, 'body_wall_print', knob3d(ctx, v).prints.bodyWall) },
+    // The rounded edge alone looks the same at every angle; scoops turn
+    { fixed: s => !knobScooped(s), build: (ctx, v) => knobBuildWall(ctx, 'body_lip', knob3d(ctx, v).lip) },
     { fixed: false, build: (ctx, v) => knobBuildFace(ctx, v, 'body') },
     { fixed: false, build: (ctx, v) => knobBuildPrints(ctx, 'body_print', knob3d(ctx, v).prints.bodyFace) },
     { fixed: s => s.cap.shape === 'circle', build: (ctx, v) => knobBuildWall(ctx, 'cap_wall', knob3d(ctx, v).walls.cap) },
@@ -2736,6 +2960,47 @@ function replaceNode(oldNode, freshNode) {
     freshNode.x = oldNode.x;
     freshNode.y = oldNode.y;
     oldNode.remove();
+}
+
+// One knob, or its strip when `strip`, from a studio or agent message.
+// Not placed: the caller puts it on the canvas. With `progress(done, total)`
+// a strip is built in steps that let Figma breathe and report progress.
+function buildKnobFromMsg(msg, strip, progress) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const spec = normalizeKnobSpec(msg.spec);
+        const font = yield knobLabelFont(spec);
+        let node;
+        if (strip && progress) node = yield runStripStepsPaced(knobStripSteps(spec, msg.frames, msg.gap, msg.axis, font), progress);
+        else if (strip) node = createSpecKnobStrip(spec, msg.frames, msg.gap, msg.axis, font);
+        else node = createSpecKnob(spec, msg.value, font);
+        applyExportScale(node, msg.x2);
+        return { spec, node };
+    });
+}
+
+// Strip steps run like Download PNG's: every 8 frames (or ~60 ms) a pause,
+// so Figma stays responsive, and a progress report. `onStrip(strip)`, if
+// given, hears about the strip as soon as it exists (e.g. to park it).
+function runStripStepsPaced(steps, progress, onStrip) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let r = steps.next();
+        let last = Date.now();
+        if (onStrip && !r.done) onStrip(r.value.strip);
+        while (!r.done) {
+            if (r.value.done % 8 === 0 || Date.now() - last > 60) {
+                progress(r.value.done, r.value.total);
+                yield new Promise(res => setTimeout(res, 0));
+                last = Date.now();
+            }
+            r = steps.next();
+        }
+        return r.value;
+    });
+}
+
+// Agent mode's progress on a long build, shown on the Agent button
+function agentProgress(msg) {
+    return (done, total) => figma.ui.postMessage({ type: 'agent-progress', id: msg.id, done, total });
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -4971,9 +5236,37 @@ function panelPiece(ctx, name, p, hex) {
     return n;
 }
 
+// Plain rectangles as one vector, one subpath each. Thousands of specks
+// (sandpaper, granite) take Figma a minute or more to create and flatten one
+// by one; this is the same shape built in a single node.
+function panelRectsVector(ctx, name, list, hex) {
+    let minX = Infinity, minY = Infinity;
+    list.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); });
+    const f = v => +v.toFixed(3);
+    // Figma's path data takes M, L, Q, C and Z only
+    const data = list.map(p => {
+        const x0 = f(p.x - minX), y0 = f(p.y - minY), x1 = f(p.x - minX + p.w), y1 = f(p.y - minY + p.h);
+        return `M ${x0} ${y0} L ${x1} ${y0} L ${x1} ${y1} L ${x0} ${y1} Z`;
+    }).join(' ');
+    const n = figma.createVector();
+    ctx.f.appendChild(n);
+    n.name = name;
+    n.vectorPaths = [{ windingRule: 'NONZERO', data }];
+    n.strokes = [];
+    n.fills = knobSolid(hex);
+    n.x = minX;
+    n.y = minY;
+    return n;
+}
+
 // Pieces as one layer per shade: flattened in Figma, a group elsewhere
 function panelLines(ctx, name, list, hex, alpha) {
     if (!list.length) return null;
+    if (typeof figma.flatten === 'function' && list.every(p => !p.k && !p.a)) {
+        const v = panelRectsVector(ctx, name, list, hex);
+        v.opacity = alpha;
+        return v;
+    }
     const rects = list.map((p, i) => panelPiece(ctx, name + '_' + (i + 1), p, hex));
     const n = typeof figma.flatten === 'function' ? figma.flatten(rects, ctx.f) : knobGroupOf(ctx, name, rects);
     n.name = name;
@@ -9191,5 +9484,716 @@ function exportVellumLayout(options) {
         warnings: vellumValidate(layout),
         skipped: ctx.skipped
     };
+    });
+}
+
+////////////////////////////////////////////////////////////////////////////
+// Agent mode. Claude Code or Codex drives the studios through the vstgui-mcp
+// bridge. ui.html holds the socket and passes agent-* messages here; every
+// reply is an agent-result carrying the request's id. Everything but
+// agent-hello is PRO, checked here and nowhere else.
+//
+// It lives at the end of the file because its tables point at every studio's
+// spec tables, which are top-level consts declared above.
+////////////////////////////////////////////////////////////////////////////
+
+// Bumped when the messages change shape; the bridge refuses a mismatch
+const AGENT_PROTOCOL = 2;
+// Claude scales images down to about 1568 px anyway, and a larger PNG can
+// pass its per-image size limit
+const AGENT_PNG_MAX_SIDE = 2048;
+const AGENT_WEIGHTS = { regular: 'Regular', medium: 'Medium', semibold: 'Semi Bold', bold: 'Bold' };
+
+// Each control type: its spec tables, default strip length (Vellum's), and
+// how to build one frame or a strip. Plugin data keys are `<type>Spec`,
+// `<type>Kind` ('<type>' or 'strip'), `<type>Value` and `<type>Strip`.
+const AGENT_CONTROLS = {
+    knob: {
+        base: KNOB_SPEC_BASE, limits: KNOB_SPEC_LIMITS, enums: KNOB_SPEC_ENUMS, normalize: normalizeKnobSpec, frames: 128,
+        one: (s, v) => knobLabelFont(s).then(f => createSpecKnob(s, v, f)),
+        steps: (s, o) => knobLabelFont(s).then(f => knobStripSteps(s, o.frames, o.gap, o.axis, f)),
+        bipolar: s => !!s.ring.bipolar
+    },
+    slider: {
+        base: SLIDER_SPEC_BASE, limits: SLIDER_SPEC_LIMITS, enums: SLIDER_SPEC_ENUMS, normalize: normalizeSliderSpec, frames: 128,
+        one: (s, v) => Promise.resolve(createSpecSlider(s, v)),
+        steps: (s, o) => Promise.resolve(sliderStripSteps(s, o.frames, o.gap, o.axis)),
+        bipolar: s => !!s.fill.bipolar
+    },
+    button: {
+        base: BUTTON_SPEC_BASE, limits: BUTTON_SPEC_LIMITS, enums: BUTTON_SPEC_ENUMS, normalize: normalizeButtonSpec, frames: 2,
+        one: (s, v) => createSpecButton(s, v),
+        strip: (s, o) => createSpecButtonStrip(s, o.gap, o.axis),
+        bipolar: () => false
+    },
+    meter: {
+        base: METER_SPEC_BASE, limits: METER_SPEC_LIMITS, enums: METER_SPEC_ENUMS, normalize: normalizeMeterSpec, frames: 48,
+        one: (s, v) => meterFonts(s).then(f => createSpecMeter(s, v, f)),
+        steps: (s, o) => meterFonts(s).then(f => meterStripSteps(s, o.frames, o.gap, o.axis, f)),
+        bipolar: () => false
+    },
+    wheel: {
+        base: WheelParts.BASE, limits: WheelParts.LIMITS, enums: WheelParts.ENUMS, normalize: normalizeWheelSpec, frames: 128,
+        one: (s, v) => Promise.resolve(createSpecWheel(s, v)),
+        steps: (s, o) => Promise.resolve(wheelStripSteps(s, o.frames, o.gap, o.axis)),
+        bipolar: s => s.mode === 'pitch',
+        rest: s => (s.mode === 'pitch' ? 0.5 : 0)
+    }
+};
+const AGENT_PANEL = { base: PANEL_SPEC_BASE, limits: PANEL_SPEC_LIMITS, enums: PANEL_SPEC_ENUMS };
+
+const agentNum = v => (typeof v === 'number' && isFinite(v) ? v : null);
+const agentGiven = (msg, k) => msg[k] !== undefined && msg[k] !== null;
+
+function agentReply(msg, data) {
+    figma.ui.postMessage(Object.assign({ type: 'agent-result', id: msg.id, req: msg.type }, data));
+}
+
+// PNG of a node, shrunk if needed so its longer side fits AGENT_PNG_MAX_SIDE
+function agentPng(node, scale) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let s = Number(scale);
+        s = isFinite(s) && scale !== null ? Math.max(0.5, Math.min(4, s)) : 2;
+        s = Math.min(s, AGENT_PNG_MAX_SIDE / Math.max(1, node.width, node.height));
+        const png = yield node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: s }, useAbsoluteBounds: true });
+        return { png, scale: s };
+    });
+}
+
+// Brings the panel the agent is working on back into view if the user has
+// scrolled away, so they can watch it build. Leaves the view alone otherwise.
+function agentKeepInView(node) {
+    const v = figma.viewport.bounds, b = node.absoluteBoundingBox;
+    if (!v || !b) return;
+    const inside = b.x >= v.x && b.y >= v.y && b.x + b.width <= v.x + v.width && b.y + b.height <= v.y + v.height;
+    if (!inside) figma.viewport.scrollAndZoomIntoView([node]);
+}
+
+// Builds and selections only work on the current page
+function agentShowPage(node) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let p = node;
+        while (p && p.type !== 'PAGE') p = p.parent;
+        if (p && p !== figma.currentPage) yield figma.setCurrentPageAsync(p);
+    });
+}
+
+// The node a request names, else the single selected node
+function agentTarget(msg) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (typeof msg.nodeId === 'string' && msg.nodeId) {
+            const node = yield figma.getNodeByIdAsync(msg.nodeId);
+            if (!node || node.removed || node.type === 'PAGE' || node.type === 'DOCUMENT') throw new Error(`No node ${msg.nodeId} on the canvas. It may have been deleted.`);
+            yield agentShowPage(node);
+            return node;
+        }
+        const sel = figma.currentPage.selection;
+        if (sel.length !== 1) throw new Error(sel.length ? 'Select only one control.' : 'Nothing is selected. Pass a nodeId or select a control.');
+        return sel[0];
+    });
+}
+
+// The studio panel a node is, or sits inside
+function agentPanelOf(node) {
+    for (let p = node; p && p.type !== 'PAGE' && p.type !== 'DOCUMENT'; p = p.parent) {
+        if (p.getPluginData('panelKind')) return p;
+    }
+    return null;
+}
+
+// The panel a request names (panelId), else the one the selection is in
+function agentPanel(msg) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let node;
+        if (typeof msg.panelId === 'string' && msg.panelId) {
+            node = yield figma.getNodeByIdAsync(msg.panelId);
+            if (!node || node.removed || node.type === 'PAGE' || node.type === 'DOCUMENT') throw new Error(`No panel ${msg.panelId} on the canvas. It may have been deleted.`);
+        } else {
+            node = figma.currentPage.selection[0];
+            if (!node) throw new Error('No panel given. Pass a panelId or select a panel.');
+        }
+        const panel = agentPanelOf(node);
+        if (!panel) throw new Error(`"${node.name}" is not a VST GUI Pro panel and isn't inside one. Build one with build_panel.`);
+        yield agentShowPage(panel);
+        return panel;
+    });
+}
+
+// What a node was built as: control type, kind ('knob'/'strip'...), spec,
+// value and strip settings; null if it isn't one of ours
+function agentControlOf(node) {
+    if (!node.getPluginData) return null;
+    for (const control of Object.keys(AGENT_CONTROLS)) {
+        const kind = node.getPluginData(control + 'Kind');
+        if (!kind) continue;
+        const parse = key => {
+            try { return JSON.parse(node.getPluginData(key)); } catch (e) { return null; }
+        };
+        const value = Number(node.getPluginData(control + 'Value'));
+        return { control, kind, spec: parse(control + 'Spec'), value: isFinite(value) ? value : 0, strip: kind === 'strip' ? parse(control + 'Strip') : null };
+    }
+    return null;
+}
+
+function agentControl(msg) {
+    const control = msg.control || 'knob';
+    if (!AGENT_CONTROLS[control]) throw new Error(`Agent mode builds: ${Object.keys(AGENT_CONTROLS).join(', ')}. Not "${control}".`);
+    return control;
+}
+
+// One frame of a control, or its strip with o.strip. Not placed.
+function agentBuild(control, spec, o, progress, onStrip) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const d = AGENT_CONTROLS[control];
+        if (!o.strip) return yield d.one(spec, agentNum(o.value) !== null ? o.value : d.rest ? d.rest(spec) : 0);
+        if (d.strip) {
+            const strip = yield d.strip(spec, o);
+            if (onStrip) onStrip(strip);
+            return strip;
+        }
+        const steps = yield d.steps(spec, Object.assign({}, o, { frames: o.frames || d.frames }));
+        return progress ? yield runStripStepsPaced(steps, progress, onStrip) : runStripSteps(steps);
+    });
+}
+
+// A node's layout box relative to a panel (or the page), unrounded
+function agentBoxRaw(node, panel) {
+    const t = node.absoluteTransform;
+    const ox = panel ? panel.absoluteTransform[0][2] : 0;
+    const oy = panel ? panel.absoluteTransform[1][2] : 0;
+    return { x: t[0][2] - ox, y: t[1][2] - oy, w: node.width, h: node.height };
+}
+
+function agentBox(node, panel) {
+    const b = agentBoxRaw(node, panel);
+    const r = v => Math.round(v * 100) / 100;
+    return { x: r(b.x), y: r(b.y), w: r(b.w), h: r(b.h) };
+}
+
+// Moves a node so its top-left sits at x, y in its panel (or on the page)
+function agentMoveTo(node, x, y) {
+    const panel = agentPanelOf(node.parent);
+    const b = agentBoxRaw(node, panel);
+    if (x !== null) node.x = Math.round((node.x + x - b.x) * 100) / 100;
+    if (y !== null) node.y = Math.round((node.y + y - b.y) * 100) / 100;
+}
+
+const agentX2 = node => {
+    const e = node.exportSettings && node.exportSettings[0];
+    return !(e && e.constraint && e.constraint.value === 1);
+};
+
+// Everything on a panel but its art: controls, labels and other layers.
+// Groups the user made are looked into; controls are not.
+function agentLayoutItems(panel) {
+    const items = [];
+    const walk = (node, hidden) => {
+        if (node.getPluginData('panelArt') === '1') return;
+        const visible = !hidden && node.visible !== false;
+        const box = agentBox(node, panel);
+        const info = agentControlOf(node);
+        if (info) {
+            items.push({ node, nodeId: node.id, type: 'control', control: info.control, kind: info.kind, name: node.name, x: box.x, y: box.y, w: box.w, h: box.h, value: info.value, design: info.spec ? info.spec.name : null, visible });
+            return;
+        }
+        if (node.type === 'TEXT') {
+            items.push({ node, nodeId: node.id, type: 'label', text: node.characters, name: node.name, x: box.x, y: box.y, w: box.w, h: box.h, visible });
+            return;
+        }
+        if ((node.type === 'GROUP' || node.type === 'FRAME' || node.type === 'SECTION') && 'children' in node) {
+            node.children.forEach(c => walk(c, !visible));
+            return;
+        }
+        items.push({ node, nodeId: node.id, type: 'other', name: node.name, x: box.x, y: box.y, w: box.w, h: box.h, visible });
+    };
+    panel.children.forEach(c => walk(c, false));
+    return items;
+}
+
+// Problems an export or a match would trip on
+function agentLayoutWarnings(panel, items) {
+    const W = panel.width;
+    const H = panel.height;
+    const out = [];
+    const shown = items.filter(i => i.visible);
+    shown.forEach(i => {
+        if (i.x < -0.5 || i.y < -0.5 || i.x + i.w > W + 0.5 || i.y + i.h > H + 0.5) out.push(`${i.name} (${i.nodeId}) runs past the ${Math.round(W)}×${Math.round(H)} panel`);
+        if (i.type === 'control' && i.kind === 'strip') out.push(`${i.name} (${i.nodeId}) is an animation strip. Place single controls: export builds every strip itself`);
+        if (i.type === 'control' && (i.x % 1 || i.y % 1)) out.push(`${i.name} (${i.nodeId}) sits on half pixels (${i.x}, ${i.y}); whole pixels stay sharp`);
+        if (i.type === 'control' && (i.w < 8 || i.h < 8)) out.push(`${i.name} (${i.nodeId}) is under 8 px and will be hard to grab`);
+    });
+    const controls = shown.filter(i => i.type === 'control' && i.kind !== 'strip');
+    for (let a = 0; a < controls.length; a++) {
+        for (let b = a + 1; b < controls.length; b++) {
+            const p = controls[a];
+            const q = controls[b];
+            const ix = Math.min(p.x + p.w, q.x + q.w) - Math.max(p.x, q.x);
+            const iy = Math.min(p.y + p.h, q.y + q.h) - Math.max(p.y, q.y);
+            if (ix >= 1 && iy >= 1) out.push(`${p.name} (${p.nodeId}) and ${q.name} (${q.nodeId}) overlap by ${Math.round(ix)}×${Math.round(iy)} px`);
+        }
+    }
+    return out;
+}
+
+const agentPublic = item => {
+    const o = Object.assign({}, item);
+    delete o.node;
+    return o;
+};
+
+function agentSlug(s, fallback) {
+    return String(s || '').replace(/^(panel|knob|slider|button|meter|vu meter|pitch wheel|mod wheel)\s*·\s*/i, '')
+        .replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || fallback;
+}
+
+// Writes or edits a text label on a panel. Without a width, x is the
+// label's left edge, center or right edge, following align.
+function agentLabel(msg) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const panel = yield agentPanel(msg);
+        let t = null;
+        if (typeof msg.nodeId === 'string' && msg.nodeId) {
+            t = yield figma.getNodeByIdAsync(msg.nodeId);
+            if (!t || t.type !== 'TEXT' || agentPanelOf(t) !== panel) throw new Error(`${msg.nodeId} is not a text label on this panel.`);
+        } else if (typeof msg.text !== 'string' || !msg.text) {
+            throw new Error('A new label needs text.');
+        }
+        const old = t && t.fontName !== figma.mixed ? t.fontName : null;
+        const family = typeof msg.font === 'string' && msg.font ? msg.font : old ? old.family : 'Inter';
+        const style = AGENT_WEIGHTS[msg.weight] || (old ? old.style : 'Regular');
+        let fontName = { family, style };
+        let note = null;
+        try {
+            yield figma.loadFontAsync(fontName);
+        } catch (e) {
+            fontName = { family: 'Inter', style: AGENT_WEIGHTS[msg.weight] || 'Regular' };
+            yield figma.loadFontAsync(fontName);
+            note = `"${family} ${style}" isn't available in this Figma, so the label uses Inter.`;
+        }
+        if (old) yield figma.loadFontAsync(old);
+        const fresh = !t;
+        if (fresh) {
+            t = figma.createText();
+            panel.appendChild(t);
+            t.setPluginData('agentLabel', '1');
+        }
+        t.fontName = fontName;
+        if (typeof msg.text === 'string' && msg.text) t.characters = msg.text;
+        if (agentNum(msg.size) !== null) t.fontSize = Math.max(4, Math.min(200, msg.size));
+        else if (fresh) t.fontSize = 11;
+        if (typeof msg.color === 'string' && /^#[0-9a-f]{6}$/i.test(msg.color)) t.fills = knobSolid(msg.color);
+        else if (fresh) t.fills = knobSolid('#E6E4EC');
+        if (agentNum(msg.tracking) !== null) t.letterSpacing = { unit: 'PERCENT', value: Math.max(-20, Math.min(100, msg.tracking)) };
+        if (agentNum(msg.opacity) !== null) t.opacity = Math.max(0, Math.min(100, msg.opacity)) / 100;
+        const align = ['left', 'center', 'right'].indexOf(msg.align) !== -1 ? msg.align : t.textAlignHorizontal.toLowerCase();
+        t.textAlignHorizontal = align === 'center' ? 'CENTER' : align === 'right' ? 'RIGHT' : 'LEFT';
+        const width = agentNum(msg.width);
+        if (width !== null && width > 0) {
+            t.textAutoResize = 'HEIGHT';
+            t.resize(width, t.height);
+        } else if (fresh || width === 0) {
+            t.textAutoResize = 'WIDTH_AND_HEIGHT';
+        }
+        t.name = 'Label · ' + t.characters.slice(0, 30);
+        let x = agentNum(msg.x);
+        const y = agentNum(msg.y);
+        if (fresh && (x === null || y === null)) {
+            t.remove();
+            throw new Error('A new label needs x and y.');
+        }
+        if (x !== null && t.textAutoResize === 'WIDTH_AND_HEIGHT') x -= align === 'center' ? t.width / 2 : align === 'right' ? t.width : 0;
+        agentMoveTo(t, x, y);
+        return { nodeId: t.id, text: t.characters, box: agentBox(t, panel), note };
+    });
+}
+
+// ===== Export UI =====
+// The whole UI as files: one strip PNG per distinct control, the panel with
+// its controls hidden as the background, and layout.json. Shared by the
+// agent (the bridge writes the files) and Export UI in the plugin (a zip).
+//
+// io: { pro, file(path, bytes, text) -> Promise, progress(done, total) }
+// opts: { scale: 1|2, frames: { knob: 64, ... }, maxLength: px (0 = none) }
+// Strips longer than maxLength at 2x fall back to 1x; Vellum and the
+// Preview tab read the scale from the file name.
+const EXPORT_UI_MAX_LENGTH = 16384;
+const EXPORT_UI_HARD_LIMIT = 32768;
+
+// Width and height from a PNG's IHDR chunk
+function pngSize(bytes) {
+    if (!bytes || bytes.length < 24) return null;
+    const be = i => ((bytes[i] << 24) | (bytes[i + 1] << 16) | (bytes[i + 2] << 8) | bytes[i + 3]) >>> 0;
+    return { w: be(16), h: be(20) };
+}
+const EXPORT_UI_FOLDERS = { knob: 'knobs', slider: 'sliders', button: 'buttons', meter: 'meters', wheel: 'wheels' };
+
+function exportUi(panel, opts, io) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const scale = Number(opts.scale) === 1 ? 1 : 2;
+        const maxLength = agentNum(opts.maxLength) !== null ? Math.max(0, opts.maxLength) : EXPORT_UI_MAX_LENGTH;
+        const framesFor = control => {
+            if (control === 'button') return 2;
+            const n = Number(opts.frames && opts.frames[control]);
+            return Math.max(2, Math.min(256, Math.round(isFinite(n) && n > 0 ? n : AGENT_CONTROLS[control].frames)));
+        };
+        const items = agentLayoutItems(panel);
+        const controls = items.filter(i => i.type === 'control');
+        const skipped = [];
+        const blocked = [];
+        let panelSpec = null;
+        try { panelSpec = JSON.parse(panel.getPluginData('panelSpec')); } catch (e) { /* not ours */ }
+        const panelBlocked = !io.pro && panelSpec && panelSpec.tier === 'pro';
+        if (panelBlocked) blocked.push(panel.name);
+
+        // One strip per distinct control: same type, design, size and frames
+        const jobs = new Map();
+        const slugs = new Set();
+        const uniqueSlug = base => {
+            let s = base;
+            for (let n = 2; slugs.has(s); n++) s = base + '-' + n;
+            slugs.add(s);
+            return s;
+        };
+        controls.forEach(i => {
+            if (!i.visible) { skipped.push(`${i.name} (hidden)`); return; }
+            if (i.kind === 'strip') { skipped.push(`${i.name} (an animation strip; place a single control instead)`); return; }
+            const info = agentControlOf(i.node);
+            const d = AGENT_CONTROLS[info.control];
+            const spec = d.normalize(info.spec || {});
+            if (!io.pro && spec.tier === 'pro') { blocked.push(i.name); return; }
+            const frames = framesFor(info.control);
+            const key = info.control + '|' + frames + '|' + JSON.stringify(spec);
+            let job = jobs.get(key);
+            if (!job) {
+                job = { control: info.control, spec, frames, widgets: [], slug: uniqueSlug(agentSlug(i.name, info.control)) };
+                jobs.set(key, job);
+            }
+            job.widgets.push(i);
+        });
+
+        const total = Array.from(jobs.values()).reduce((n, j) => n + j.frames, 0) + 1;
+        let done = 0;
+        const files = [];
+        const errors = [];
+        const fallbacks = [];
+        const park = node => {
+            const vb = figma.viewport.bounds;
+            node.x = Math.round(vb.x + vb.width + 200);
+            node.y = Math.round(vb.y);
+        };
+        const write = (path, bytes, text) => __awaiter(this, void 0, void 0, function* () {
+            yield io.file(path, bytes, text);
+            files.push(path);
+        });
+
+        for (const job of jobs.values()) {
+            let strip = null;
+            const asked = job.frames;
+            try {
+                const build = () => agentBuild(job.control, job.spec, { strip: true, frames: job.frames, gap: 0, axis: 'v' },
+                    (d, t) => io.progress(done + d, total), s => { strip = s; park(s); });
+                strip = yield build();
+                let long = Math.max(strip.width, strip.height);
+                // Figma shrinks any export past 32,768 px to fit, so that
+                // limit holds whatever maxLength says
+                const limit = maxLength ? Math.min(maxLength, EXPORT_UI_HARD_LIMIT) : EXPORT_UI_HARD_LIMIT;
+                let s = scale;
+                if (long * s > limit) s = 1;
+                if (long * s > limit) {
+                    // Too long even at 1x: rebuild with the most frames that
+                    // fit, so nothing is left out. The file name and
+                    // layout.json carry the frame count.
+                    const fit = Math.floor(limit / (long / job.frames));
+                    if (fit < 2) {
+                        errors.push(`${job.widgets[0].name}: one frame is ${Math.round(long / job.frames)} px, past ${limit} px${limit < EXPORT_UI_HARD_LIMIT ? '. Use a larger maxLength' : ''}.`);
+                        continue;
+                    }
+                    strip.remove();
+                    strip = null;
+                    job.frames = fit;
+                    strip = yield build();
+                    long = Math.max(strip.width, strip.height);
+                    fallbacks.push(`${job.widgets[0].name} at ${fit} frames, not ${asked}: ${asked} frames is past Figma's ${limit} px limit even at 1x`);
+                }
+                if (s !== scale) fallbacks.push(`${job.widgets[0].name} saved at 1x (${Math.round(long * scale)} px at 2x is past ${limit})`);
+                const bytes = yield strip.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: s }, useAbsoluteBounds: true });
+                const got = pngSize(bytes);
+                if (got && Math.abs(got.h - strip.height * s) > 1) {
+                    errors.push(`${job.widgets[0].name}: Figma exported its strip at ${got.w}×${got.h} px, not ${Math.round(strip.width * s)}×${Math.round(strip.height * s)}. Use fewer frames for ${job.control}s.`);
+                    continue;
+                }
+                const cell = { w: strip.width, h: strip.height / job.frames };
+                const endless = job.control === 'knob' && job.spec.endless ? '_endless' : '';
+                job.file = `${EXPORT_UI_FOLDERS[job.control]}/${job.slug}${endless}_${job.frames}f${s === 2 ? '@2x' : ''}.png`;
+                job.scale = s;
+                job.cell = { w: Math.round(cell.w * 100) / 100, h: Math.round(cell.h * 100) / 100 };
+                yield write(job.file, bytes);
+            } finally {
+                if (strip && !strip.removed) strip.remove();
+                done += asked;
+                io.progress(done, total);
+            }
+        }
+
+        // The background: the panel with every control hidden, so labels and
+        // anything else on top of the art come out baked in
+        let background = null;
+        if (!panelBlocked) {
+            const hide = controls.map(i => i.node).filter(n => n.visible);
+            hide.forEach(n => { n.visible = false; });
+            let bytes;
+            try {
+                bytes = yield panel.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: scale }, useAbsoluteBounds: true });
+            } finally {
+                hide.forEach(n => { if (!n.removed) n.visible = true; });
+            }
+            background = `background${scale === 2 ? '@2x' : ''}.png`;
+            yield write(background, bytes);
+        }
+        io.progress(total, total);
+
+        const widgets = [];
+        for (const job of jobs.values()) {
+            if (!job.file) continue;
+            job.widgets.forEach(i => {
+                const w = { name: i.name, type: job.control, design: job.spec.name, x: i.x, y: i.y, w: i.w, h: i.h, value: i.value, file: job.file, scale: job.scale, frames: job.frames, axis: 'v', gap: 0, cell: job.cell };
+                if (AGENT_CONTROLS[job.control].bipolar(job.spec)) w.bipolar = true;
+                if (job.control === 'knob' && job.spec.endless) w.endless = true;
+                if (job.control === 'slider') w.orient = job.spec.orient;
+                if (job.control === 'meter') w.meter = job.spec.type;
+                if (job.control === 'wheel') w.wheel = job.spec.mode;
+                widgets.push(w);
+            });
+        }
+        const layout = {
+            generator: `VST GUI Pro ${VERSION}`,
+            format: 1,
+            panel: { name: panel.name, width: Math.round(panel.width), height: Math.round(panel.height), background, scale },
+            controls: widgets,
+            notes: 'x, y, w, h are in panel px (1x). Strips stack frames top to bottom; frame 0 is the minimum (a button: off). Show frame round(value × (frames − 1)).'
+        };
+        yield write('layout.json', null, JSON.stringify(layout, null, 2));
+        return {
+            panel: panel.name,
+            files,
+            controls: widgets.length,
+            strips: Array.from(jobs.values()).filter(j => j.file).length,
+            fallbacks,
+            blocked,
+            skipped,
+            errors
+        };
+    });
+}
+
+// Export UI from the Panels studio: same files, sent to the UI for a zip
+let uiExportJob = null;
+
+function exportUiFromStudio(msg) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const job = { id: msg.id, cancel: false };
+        uiExportJob = job;
+        const say = m => figma.ui.postMessage(Object.assign({ type: 'export-ui-status', id: msg.id }, m));
+        try {
+            yield proReady;
+            const sel = figma.currentPage.selection[0];
+            const panel = sel ? agentPanelOf(sel) : null;
+            if (!panel) throw new Error('Select a panel made in the Panels studio, or anything inside one.');
+            const result = yield exportUi(panel, { scale: msg.x2 === false ? 1 : 2, frames: msg.frames }, {
+                pro: proUnlocked,
+                file: (path, bytes, text) => {
+                    say({ phase: 'file', path, bytes, text });
+                    return Promise.resolve();
+                },
+                progress: (done, total) => {
+                    if (job.cancel) throw new Error('cancelled');
+                    say({ phase: 'build', done, total });
+                }
+            });
+            if (result.blocked.length) {
+                figma.ui.postMessage({ type: 'pro-required', name: result.blocked.length === 1 ? result.blocked[0] : `${result.blocked.length} designs on this panel`, feature: false });
+            }
+            say(Object.assign({ phase: 'done', zipName: agentSlug(panel.name, 'panel') + '-ui.zip' }, result));
+        } catch (e) {
+            if (job.cancel) say({ phase: 'cancelled' });
+            else {
+                console.error('Error exporting UI:', e);
+                say({ phase: 'error', error: String((e && e.message) || e) });
+            }
+        } finally {
+            if (uiExportJob === job) uiExportJob = null;
+        }
+    });
+}
+
+function handleAgentMessage(msg) {
+    return __awaiter(this, void 0, void 0, function* () {
+        yield proReady;
+        if (msg.type === 'agent-hello') {
+            agentReply(msg, { ok: true, connected: true, pro: proUnlocked, version: VERSION, protocol: AGENT_PROTOCOL, controls: Object.keys(AGENT_CONTROLS).concat('panel') });
+            return;
+        }
+        if (proBlocked(msg)) {
+            agentReply(msg, { ok: false, error: 'pro-required', message: 'Agent mode is a VST GUI Pro feature. Unlock it in the plugin to use it.' });
+            return;
+        }
+        try {
+            const given = k => agentGiven(msg, k);
+            if (msg.type === 'agent-enable') {
+                agentReply(msg, { ok: true });
+            }
+            else if (msg.type === 'agent-schema') {
+                const c = msg.control === 'panel' ? AGENT_PANEL : AGENT_CONTROLS[agentControl(msg)];
+                agentReply(msg, { ok: true, base: c.base, limits: c.limits, enums: c.enums, defaultFrames: c.frames });
+            }
+            else if (msg.type === 'agent-build' || msg.type === 'agent-strip') {
+                const control = agentControl(msg);
+                const strip = msg.type === 'agent-strip';
+                const spec = AGENT_CONTROLS[control].normalize(msg.spec || {});
+                const node = yield agentBuild(control, spec, { strip, value: msg.value, frames: msg.frames, gap: msg.gap, axis: msg.axis }, agentProgress(msg));
+                applyExportScale(node, msg.x2);
+                node.setPluginData('agentBuilt', '1');
+                placeAtViewportCenter(node);
+                figma.currentPage.selection = [node];
+                figma.viewport.scrollAndZoomIntoView([node]);
+                const out = { ok: true, nodeId: node.id, name: node.name, width: Math.round(node.width), height: Math.round(node.height), spec };
+                if (strip) out.frames = node.children.length;
+                else Object.assign(out, yield agentPng(node, msg.scale));
+                agentReply(msg, out);
+            }
+            else if (msg.type === 'agent-update') {
+                const target = yield agentTarget(msg);
+                const info = agentControlOf(target);
+                if (!info) throw new Error(target.type === 'TEXT' ? 'That is a label: change it with set_label.' : 'That node is not a control made by VST GUI Pro.');
+                const d = AGENT_CONTROLS[info.control];
+                const rebuild = given('spec') || given('value') || given('x2') || ['frames', 'gap', 'axis'].some(given);
+                let node = target;
+                let spec = info.spec;
+                if (rebuild) {
+                    // Whatever isn't given carries over from the old node
+                    spec = d.normalize(given('spec') ? msg.spec : info.spec || {});
+                    const o = Object.assign({ gap: 0, axis: 'v' }, info.strip || {}, { strip: info.kind === 'strip', value: given('value') ? msg.value : info.value });
+                    ['frames', 'gap', 'axis'].forEach(k => { if (given(k)) o[k] = msg[k]; });
+                    node = yield agentBuild(info.control, spec, o, agentProgress(msg));
+                    applyExportScale(node, given('x2') ? msg.x2 : agentX2(target));
+                    node.setPluginData('agentBuilt', '1');
+                    const keep = target.getPluginData('agentName');
+                    if (keep) {
+                        node.name = keep;
+                        node.setPluginData('agentName', keep);
+                    }
+                    replaceNode(target, node);
+                }
+                if (given('name')) {
+                    node.name = String(msg.name);
+                    node.setPluginData('agentName', node.name);
+                }
+                if (given('x') || given('y')) agentMoveTo(node, agentNum(msg.x), agentNum(msg.y));
+                figma.currentPage.selection = [node];
+                const panel = agentPanelOf(node.parent);
+                const out = { ok: true, nodeId: node.id, name: node.name, control: info.control, box: agentBox(node, panel), inPanel: panel ? panel.id : null, spec };
+                if (info.kind !== 'strip') Object.assign(out, yield agentPng(node, msg.scale));
+                agentReply(msg, out);
+            }
+            else if (msg.type === 'agent-snapshot') {
+                const node = yield agentTarget(msg);
+                const shot = yield agentPng(node, msg.scale);
+                agentReply(msg, Object.assign({ ok: true, nodeId: node.id, name: node.name, width: Math.round(node.width), height: Math.round(node.height) }, shot));
+            }
+            else if (msg.type === 'agent-read-selection') {
+                const node = yield agentTarget(msg);
+                const info = agentControlOf(node);
+                agentReply(msg, Object.assign({ ok: true, nodeId: node.id, name: node.name }, info || { control: null, kind: null, spec: null }));
+            }
+            else if (msg.type === 'agent-panel-build') {
+                const spec = normalizePanelSpec(msg.spec || {});
+                const panel = yield createSpecPanel(spec);
+                panel.setPluginData('agentBuilt', '1');
+                placeAtViewportCenter(panel);
+                figma.currentPage.selection = [panel];
+                figma.viewport.scrollAndZoomIntoView([panel]);
+                agentReply(msg, Object.assign({ ok: true, panelId: panel.id, name: panel.name, width: Math.round(panel.width), height: Math.round(panel.height), spec }, yield agentPng(panel, msg.scale)));
+            }
+            else if (msg.type === 'agent-panel-update') {
+                const panel = yield agentPanel(msg);
+                if (!given('spec')) throw new Error('update_panel needs a spec.');
+                const spec = normalizePanelSpec(msg.spec);
+                yield updateSpecPanel(panel, spec);
+                figma.currentPage.selection = [panel];
+                agentKeepInView(panel);
+                agentReply(msg, Object.assign({ ok: true, panelId: panel.id, name: panel.name, width: Math.round(panel.width), height: Math.round(panel.height), spec }, yield agentPng(panel, msg.scale)));
+            }
+            else if (msg.type === 'agent-place') {
+                const panel = yield agentPanel(msg);
+                const control = agentControl(msg);
+                const spec = AGENT_CONTROLS[control].normalize(msg.spec || {});
+                const node = yield agentBuild(control, spec, { strip: false, value: msg.value });
+                applyExportScale(node, msg.x2);
+                node.setPluginData('agentBuilt', '1');
+                panel.appendChild(node);
+                const x = agentNum(msg.x);
+                const y = agentNum(msg.y);
+                node.x = Math.round(x !== null ? x : (panel.width - node.width) / 2);
+                node.y = Math.round(y !== null ? y : (panel.height - node.height) / 2);
+                if (given('name')) {
+                    node.name = String(msg.name);
+                    node.setPluginData('agentName', node.name);
+                }
+                figma.currentPage.selection = [node];
+                agentKeepInView(panel);
+                agentReply(msg, Object.assign({ ok: true, nodeId: node.id, name: node.name, control, box: agentBox(node, panel), spec }, yield agentPng(node, msg.scale)));
+            }
+            else if (msg.type === 'agent-arrange') {
+                const panel = yield agentPanel(msg);
+                const moved = [];
+                const errors = [];
+                for (const it of Array.isArray(msg.items) ? msg.items : []) {
+                    const node = it && typeof it.nodeId === 'string' ? yield figma.getNodeByIdAsync(it.nodeId) : null;
+                    if (!node || node.removed || node.type === 'PAGE' || agentPanelOf(node.parent) !== panel) {
+                        errors.push(`${it && it.nodeId}: not on this panel`);
+                        continue;
+                    }
+                    agentMoveTo(node, agentNum(it.x), agentNum(it.y));
+                    moved.push(Object.assign({ nodeId: node.id, name: node.name }, agentBox(node, panel)));
+                }
+                agentReply(msg, { ok: true, moved, errors });
+            }
+            else if (msg.type === 'agent-remove') {
+                const node = yield agentTarget(msg);
+                if (!agentControlOf(node) && node.getPluginData('agentLabel') !== '1') throw new Error('Only controls and labels made by VST GUI Pro can be removed this way.');
+                const out = { ok: true, removed: node.id, name: node.name };
+                node.remove();
+                agentReply(msg, out);
+            }
+            else if (msg.type === 'agent-label') {
+                agentReply(msg, Object.assign({ ok: true }, yield agentLabel(msg)));
+            }
+            else if (msg.type === 'agent-layout') {
+                const panel = yield agentPanel(msg);
+                const items = agentLayoutItems(panel);
+                let spec = null;
+                try { spec = JSON.parse(panel.getPluginData('panelSpec')); } catch (e) { /* not ours */ }
+                agentReply(msg, Object.assign({
+                    ok: true, panelId: panel.id, name: panel.name, width: Math.round(panel.width), height: Math.round(panel.height),
+                    design: spec ? spec.name : null, items: items.map(agentPublic), warnings: agentLayoutWarnings(panel, items)
+                }, yield agentPng(panel, msg.scale)));
+            }
+            else if (msg.type === 'agent-export') {
+                const panel = yield agentPanel(msg);
+                const dir = agentSlug(panel.name, 'panel');
+                const result = yield exportUi(panel, { scale: msg.scale, frames: msg.frames, maxLength: msg.maxLength }, {
+                    pro: proUnlocked,
+                    file: (path, bytes, text) => {
+                        figma.ui.postMessage({ type: 'agent-file', id: msg.id, dir, path, bytes, text });
+                        return Promise.resolve();
+                    },
+                    progress: agentProgress(msg)
+                });
+                agentReply(msg, Object.assign({ ok: true }, result));
+            }
+        } catch (e) {
+            console.error('Agent request failed:', msg.type, e);
+            agentReply(msg, { ok: false, error: 'failed', message: String((e && e.message) || e) });
+        }
     });
 }

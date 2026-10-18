@@ -1,0 +1,34 @@
+{
+  "name": "vstgui-mcp",
+  "version": "0.1.4",
+  "description": "Lets Claude Code or Codex build audio plugin GUIs in Figma with the VST GUI Pro plugin",
+  "keywords": [
+    "mcp",
+    "figma",
+    "vst",
+    "audio-plugin",
+    "gui",
+    "juce",
+    "hise",
+    "claude-code",
+    "codex"
+  ],
+  "author": "Banx Engineering LLC",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "vstgui-mcp": "index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
+  }
+}

@@ -18,3 +18,7 @@ node_modules/
 tmp/
 scratch/
 *.tmp
+
+# Local agent setup (machine-specific path) and agent export output
+.mcp.json
+vstgui-export/

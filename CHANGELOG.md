@@ -6,6 +6,29 @@
 - Once submitted for approval
 - The user community will have input on future features
 
+## [2.3.0] - 2026-10-18
+### Added
+- **Agent mode** (PRO): build your plugin UI by talking to **Claude Code** or **Codex**. Paste a sketch, a screenshot or a description, and the agent builds it in Figma: the panel at your window size, every knob, slider, button, meter and wheel in place, and the labels. Then ask for changes in plain words ("make the background a blue to purple gradient", "move the meters 10 px out") or with a marked-up screenshot
+  - It works with you: it asks a few short questions first (window size, anything unclear, anything it can't draw), stops after the build so you can review it, and only exports when you say so
+  - It checks its own work against your reference (overlaps, edges, half pixels) and lines things up before it hands over
+  - While it builds, the plugin shrinks to a small bar so you can watch the canvas. **Expand** brings the full window back
+  - The **Agent** dot in the header shows the link: green when connected, pulsing amber while it waits for your agent
+  - Install in one line: paste "Install vstgui-mcp from https://www.npmjs.com/package/vstgui-mcp" into your agent. See **MCP Setup** in the wiki
+  - Private by design: off by default, it connects only to your own computer, and only the plugin can connect to it
+- **Export UI** (Panels studio, or ask the agent to "export"): your whole UI in one go. You get the background with your labels baked in, one strip per control (identical controls share one file), and `layout.json` with every control's position, size and frame count, ready for JUCE, HISE or your own code. The plugin downloads a zip; the agent writes the files straight into your project. Free with free designs; PRO designs need PRO
+- Two new 3D options for round knobs in the Knob studio:
+  - **Round edge**: the top face rolls over into the side in a soft curve that catches the light, instead of meeting it at a sharp corner
+  - **Scoops**: thumb-grip dishes cut down into the top edge, like machined hi-fi knobs. Set how many, how wide and how deep. They stop part way down, so the base stays whole, and they turn with the knob while the light stays put
+- A new PRO 3D knob, **Scoop**: a brushed silver hi-fi puck with thumb-grip scoops, a small center cap, and a light blue line pointer and value arc
+
+### Fixed
+- Sandpaper and granite panel textures build in moments instead of a minute or more
+- 3D **Slots** on a knurled, fluted or gear body: the slotted side now follows the body's own edge instead of a plain circle, so it no longer sticks out past the top in pieces, and the slots line up in the valleys when Slots matches the body's teeth
+
+### Notes
+- Figma can't export an image longer than 32,768 px. A strip that long even at 1x (a 290 px knob at 128 frames, say) is saved with the most frames that fit (112 for that knob), never left out or shrunk. The file name and `layout.json` show the frame count, and the export notes say what changed
+- Agent mode needs the Figma desktop app, Node.js 18 or newer, and Claude Code or Codex
+
 ## [2.2.0] - 2026-10-11
 ### Added
 - Two new PRO knob styles, **Frost** (light) and **Graphite** (dark): a smooth top-lit dome with a thin value arc, three ticks and a short pointer. Only the pointer and arc move, so the knob body can sit in the panel art with Vellum's ring on top

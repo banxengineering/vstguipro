@@ -60,7 +60,39 @@
 
   .status-area {
     font-size: 11px;
+    display: flex; align-items: center; gap: 8px;
+    white-space: nowrap;
   }
+
+  /* Agent mode toggle: the dot is off (grey), connecting (amber, pulsing) or connected (green) */
+  .agent-btn {
+    display: inline-flex; align-items: center; gap: 5px; margin: 0; padding: 2px 7px 2px 6px;
+    border: 1px solid #4a4658; border-radius: 10px; background: transparent; color: #b8b4c4;
+    font: 500 11px/1.4 Inter, 'Segoe UI', sans-serif; cursor: pointer;
+  }
+  .agent-btn:hover { border-color: #8A5CF6; color: #fff; }
+  .agent-btn[aria-pressed="true"] { border-color: #8A5CF6; color: #fff; background: rgba(138, 92, 246, 0.18); }
+  .agent-dot { width: 7px; height: 7px; border-radius: 50%; background: #5d5968; }
+  .agent-btn[data-state="connecting"] .agent-dot { background: #E0A63A; animation: agent-pulse 1.2s ease-in-out infinite; }
+  .agent-btn[data-state="busy"] .agent-dot { background: #E0A63A; }
+  .agent-btn[data-state="connected"] .agent-dot { background: #3BC97B; box-shadow: 0 0 5px rgba(59, 201, 123, 0.7); }
+  .agent-pro { font-size: 9px; font-weight: 600; letter-spacing: 0.04em; color: #FFD700; opacity: 0.85; }
+  /* The PRO badge is an upsell; once licensed, "Pro Version" next to it already says so */
+  .status-area:has(.status-pro) .agent-pro { display: none; }
+  /* How far a strip the agent asked for has got */
+  .agent-progress { font-size: 10px; font-variant-numeric: tabular-nums; color: #3BC97B; }
+  /* Compact bar shown while the agent builds; covers the whole (shrunk) window */
+  .agent-mini {
+    position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; background: #1E1C24; color: #fff; font: 11px/1.4 Inter, 'Segoe UI', sans-serif;
+  }
+  .agent-mini[hidden] { display: none; }
+  .agent-mini .agent-dot { flex: 0 0 auto; background: #3BC97B; box-shadow: 0 0 5px rgba(59, 201, 123, 0.7); }
+  .agent-mini-text { flex: 1 1 auto; min-width: 0; }
+  .agent-mini-title { font-weight: 600; }
+  .agent-mini-step { color: #b8b4c4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  @keyframes agent-pulse { 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .agent-btn[data-state="connecting"] .agent-dot { animation: none; } }
 
   .status-free {
     color: #8A5CF6;
@@ -1041,7 +1073,9 @@
     color: #f2c94c; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
   }
   button.pro-gallery-link:hover { background: rgba(242, 201, 76, 0.1); }
-  .knob-styles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  /* minmax(0, …): columns may shrink below a thumbnail's width, so four fit
+     a narrow settings column (panel thumbnails are wider than knob ones) */
+  .knob-styles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   button.knob-style {
     width: auto; margin: 0; padding: 6px 2px 5px;
     display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -1049,14 +1083,17 @@
     color: #b8b4c4; font-size: 10px; font-weight: 500;
     transition: none;
   }
-  button.knob-style canvas { width: 36px; height: 36px; }
+  button.knob-style canvas { width: 36px; height: 36px; max-width: 100%; object-fit: contain; }
+  button.knob-style { min-width: 0; overflow: hidden; }
+  button.knob-style > span, button.knob-style > div { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   button.knob-style:hover { border-color: #5a5862; background: #2f2f33; }
   button.knob-style[aria-pressed="true"] { border-color: #8A5CF6; background: rgba(138, 92, 246, 0.16); color: #ffffff; }
   button.knob-style:focus-visible, button.pro-gallery-link:focus-visible { outline: 2px solid #8A5CF6; outline-offset: 1px; }
 
   /* ===== Knob studio v2: bar, stage, layer panel, gallery, PRO dialog ===== */
   .knob-studio button { transition: none; }
-  .studio-bar { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+  /* Wraps when a studio has more views than fit (Panels has five) */
+  .studio-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 28px; }
   .seg { display: inline-flex; padding: 2px; gap: 2px; background: #2a2a2a; border-radius: 6px; flex: 0 0 auto; }
   .knob-studio .seg button {
     width: auto; margin: 0; padding: 4px 12px; border-radius: 4px; background: none;
@@ -1249,7 +1286,7 @@
   /* Panels are landscape: wider cards and style thumbnails */
   .knob-studio[data-studio="panel"] .kg-grid { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
   .knob-studio[data-studio="panel"] .kg-card canvas { aspect-ratio: 1.4; }
-  .knob-studio[data-studio="panel"] button.knob-style canvas { width: 50px; height: 36px; }
+  .knob-studio[data-studio="panel"] button.knob-style canvas { width: 50px; height: auto; aspect-ratio: 1.4; }
   /* Extra studio views, like the panel studio's Vellum export */
   .studio-pane { flex: 1 1 0; min-height: 0; overflow-y: auto; padding-right: 4px; }
   .vellum-export { display: flex; flex-direction: column; gap: 8px; min-height: 100%; }
@@ -1335,6 +1372,11 @@
   .wn-knobs { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px; }
   .wn-knobs canvas { width: 96px; height: 96px; }
   .wn-list { margin: 0 0 16px; padding-left: 18px; text-align: left; font-size: 11.5px; line-height: 1.5; color: #d6d3de; }
+  .wn-copy { display: flex; align-items: center; gap: 6px; margin: -6px 0 16px; padding: 6px 6px 6px 10px; text-align: left; background: #18171c; border: 1px solid #3a3842; border-radius: 8px; }
+  .wn-copy[hidden] { display: none; }
+  .wn-copy code { flex: 1; min-width: 0; font: 10.5px/1.4 ui-monospace, Consolas, monospace; color: #e9e1ff; overflow-wrap: anywhere; }
+  .wn-copy button { flex: 0 0 auto; width: auto; margin: 0; padding: 4px 10px; font-size: 11px; background: #3c3c3c; }
+  .wn-copy button:hover { background: #4a4a4a; }
   .wn-list li + li { margin-top: 4px; }
   @media (prefers-reduced-motion: reduce) { .kl-chev { transition: none; } }
 
@@ -1587,6 +1629,13 @@
   .stage-empty { color: #b8b4c4; max-width: 34ch; text-align: center; line-height: 1.5; margin: 0; padding: 16px; }
   .vellum-stage { background: #252528; border: 1px solid #34333a; }
   .vellum-stage .vellum-preview { width: 100%; height: 100%; border: none; background: none; }
+  .ui-export-stage { display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow: auto; }
+  .ui-export-progress { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #cccccc; font-variant-numeric: tabular-nums; }
+  .ui-export-bar { flex: 1; height: 6px; border-radius: 3px; background: #34333a; overflow: hidden; }
+  .ui-export-bar span { display: block; height: 100%; width: 0; background: #8A5CF6; transition: width 0.15s; }
+  .ui-export-files { margin: 0; padding-left: 16px; font-size: 10px; color: #cccccc; line-height: 1.5; font-family: ui-monospace, Consolas, monospace; }
+  .ui-export-frames { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 11px; color: #cccccc; }
+  .ui-export-frames input { width: 52px; }
   .settings-col .vellum-counts, .settings-col .vellum-warnings { margin-top: 8px; }
   /* Id selectors so the old button#create margin can't win */
   .knob-studio button.studio-add, #create { margin: 0; height: 32px; padding-block: 0; }
@@ -1691,7 +1740,6 @@
     .stage, .knob-stage { flex: 0 0 auto; height: 260px; }
     .stage-stack, .studio-view, .gallery-view { flex: 0 0 auto; }
     .gallery-view { overflow: visible; }
-    .studio-bar { flex-wrap: wrap; }
     .knob-settings-col, .settings-col { overflow: visible; }
     .copyright { display: none; }
   }
@@ -1726,8 +1774,22 @@
         </h2>
       </div>
       <div class="status-area">
+        <button type="button" class="agent-btn" id="agentBtn" aria-pressed="false" data-state="off"
+          title="Agent mode (PRO): let Claude Code or Codex on this computer drive the studios. Off.">
+          <span class="agent-dot" aria-hidden="true"></span>Agent<span class="agent-pro">PRO</span><span class="agent-progress" id="agentProgress" hidden></span>
+        </button>
         <span class="status-free" id="userStatus">Free Version</span>
       </div>
+    </div>
+    <!-- Agent mode's compact bar: the window shrinks to this while the agent
+         builds, so the canvas it is drawing on stays in view -->
+    <div class="agent-mini" id="agentMini" hidden>
+      <span class="agent-dot" aria-hidden="true"></span>
+      <div class="agent-mini-text">
+        <div class="agent-mini-title">Your agent is building on the canvas</div>
+        <div class="agent-mini-step" id="agentMiniStep" aria-live="polite">Starting…</div>
+      </div>
+      <button type="button" class="chip-btn" id="agentMiniExpand" title="Back to the full window. It stays full until Agent mode is turned off and on again.">Expand</button>
     </div>
 
     <div class="radio-group">
@@ -1806,6 +1868,10 @@
       <div class="wn-knobs" id="whatsNewKnobs"></div>
       <h3 id="whatsNewTitle">What's new</h3>
       <ul class="wn-list" id="whatsNewList"></ul>
+      <div class="wn-copy" id="whatsNewCopy" hidden>
+        <code id="whatsNewCopyText"></code>
+        <button type="button" class="btn-secondary" id="whatsNewCopyBtn">Copy</button>
+      </div>
       <div class="pro-dialog-actions">
         <button type="button" class="btn-primary" id="whatsNewTry">Try it</button>
         <button type="button" class="btn-secondary" id="whatsNewOk">Got it</button>
@@ -1832,6 +1898,32 @@
 
   <!-- BYOC: markup is built by ByocTool -->
   <div id="byocContent" style="display: none;"></div>
+
+  <!-- Export UI: moves into the Panels studio's "Export UI" view -->
+  <div id="uiExportBlock" class="vellum-export" hidden>
+    <div class="stage vellum-stage ui-export-stage">
+      <p id="uiExportEmpty" class="stage-empty">Select a panel on the canvas (or anything on it) and press <b>Export UI</b>. You get one zip: the background with your controls hidden, one strip per control (identical controls share one), and <b>layout.json</b> with every control's position, size and frames.</p>
+      <div id="uiExportProgress" class="ui-export-progress" hidden>
+        <div class="ui-export-bar"><span id="uiExportBarFill"></span></div>
+        <span id="uiExportProgressText"></span>
+      </div>
+      <ul id="uiExportFiles" class="ui-export-files" hidden></ul>
+    </div>
+    <div id="uiExportStatus" class="vellum-status" hidden></div>
+    <ul id="uiExportNotes" class="vellum-warnings" hidden></ul>
+    <div class="stage-actions">
+      <button id="uiExportBtn" title="Build every strip for the selected panel and download the whole UI as a zip">Export UI</button>
+      <button id="uiExportCancel" class="vellum-secondary" hidden>Cancel</button>
+    </div>
+    <div class="vellum-options ui-export-frames">
+      <span>Frames</span>
+      <label>Knobs <input type="number" id="uiFramesKnob" min="2" max="256" value="128"></label>
+      <label>Sliders <input type="number" id="uiFramesSlider" min="2" max="256" value="128"></label>
+      <label>Meters <input type="number" id="uiFramesMeter" min="2" max="256" value="48"></label>
+      <label>Wheels <input type="number" id="uiFramesWheel" min="2" max="256" value="128"></label>
+    </div>
+    <p class="vellum-hint">Buttons are always 2 frames (off, on). Uses the Export @2x setting; a strip past 16,384 px at 2x is saved at 1x instead, and the file name says which.</p>
+  </div>
 
   <div id="vellumExportBlock" class="vellum-export" hidden>
     <div class="stage vellum-stage" id="vellumStage">
@@ -2173,7 +2265,7 @@
       const START = 135;  // 7:30, clockwise from 3 o'clock
       const SWEEP = 270;
       const SEG = 144;    // points per full circle
-
+    
       const BASE = {
         name: 'Custom', tier: 'free', source: '', size: 110, endless: false,
         body: { on: true, shape: 'circle', teeth: 36, depth: 3, tip: 72, fill: 'linear', c1: '#5E5E66', c2: '#2E2E34', angle: 90, sheen: 0, brush: 0, grain: 0, edge: 0, edgeColor: '#000000', shadow: 0, shadowAlpha: 40, shadowDist: 35, shadowAngle: 90 },
@@ -2182,10 +2274,10 @@
         pointer: { shape: 'line', color: '#FFFFFF', width: 5, length: 18, inset: 6, round: true, glow: 0, edge: 0, edgeColor: '#000000' },
         ring: { style: 'arc', width: 6, gap: 5, count: 21, round: false, track: true, trackColor: '#3A3A42', value: true, valueColor: '#8A5CF6', opacity: 100, glow: 0, bipolar: false, single: false, over: false },
         ticks: { on: false, count: 11, color: '#8C8898', length: 7, width: 1.5, gap: 4, major: 0, majorLength: 11, labels: 'none', labelSize: 9, labelColor: '#C8C6D0' },
-        depth: { on: false, tilt: 26, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
+        depth: { on: false, tilt: 26, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, round: 0, scoops: 0, scoopSize: 12, scoopDepth: 50, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
         print: { scale: 'none', from1: false, mark: 'start', color: '#F2F2F2', size: 8, radius: 42, ticks: 0, at: 30, index: false, indexColor: '#1A1917', label: '', labelColor: '#141414', labelSize: 7, stripe: false, stripeColor: '#E8322A', stripeWidth: 5 }
       };
-
+    
       const LIMITS = {
         'size': [16, 512],
         'body.teeth': [3, 72], 'body.depth': [0, 15], 'body.tip': [52, 95],
@@ -2201,11 +2293,12 @@
         'ticks.major': [0, 10], 'ticks.majorLength': [1, 30], 'ticks.labelSize': [4, 24],
         'depth.tilt': [-60, 60], 'depth.persp': [0, 100], 'depth.height': [0, 80], 'depth.flare': [0, 40], 'depth.shine': [0, 100], 'depth.rim': [0, 100],
         'depth.grooves': [0, 12], 'depth.slots': [0, 36], 'depth.slotWidth': [2, 50], 'depth.slotDepth': [0, 8], 'depth.band': [0, 60], 'depth.bandInset': [0, 6],
+        'depth.round': [0, 15], 'depth.scoops': [0, 16], 'depth.scoopSize': [4, 30], 'depth.scoopDepth': [10, 95],
         'depth.capHeight': [0, 60], 'depth.capTaper': [0, 60], 'depth.capShine': [0, 100], 'depth.capRim': [0, 100], 'depth.capGrooves': [0, 12],
         'depth.barHeight': [0, 40], 'depth.barShine': [0, 100], 'depth.cast': [0, 200],
         'print.size': [3, 20], 'print.radius': [10, 60], 'print.ticks': [0, 8], 'print.at': [5, 95], 'print.labelSize': [3, 24], 'print.stripeWidth': [1, 15]
       };
-
+    
       const FILLS = ['solid', 'linear', 'radial', 'conic', 'brushed'];
       const ENUMS = {
         'body.shape': ['circle', 'knurl', 'fluted', 'polygon', 'teardrop'],
@@ -2220,14 +2313,14 @@
         'print.scale': ['none', 'face', 'wall'],
         'print.mark': ['start', 'top']
       };
-
+    
       // Brushed metal: [position, share of the light color] around the turn,
       // two bright streaks across the face
       const BRUSH_STOPS = [[0, 0.15], [0.1, 0.05], [0.22, 0.2], [0.3, 0.55], [0.375, 1], [0.45, 0.5], [0.55, 0.1],
         [0.65, 0.2], [0.8, 0.6], [0.875, 1], [0.94, 0.45], [1, 0.15]];
       // Texture strengths at 100%: ring and speck opacity, ring line width in units
       const TEX = { brushLight: 0.16, brushDark: 0.2, brushWidth: 0.35, grainLight: 0.22, grainDark: 0.32 };
-
+    
       const r3 = n => Math.round(n * 1000) / 1000;
       const rad = d => d * Math.PI / 180;
       const frac = x => x - Math.floor(x);
@@ -2250,7 +2343,7 @@
       // or corners turns with the value. Only the outline turns: the node itself
       // doesn't rotate, so its gradient light and drop shadow stay put.
       const turns = shape => shape !== 'circle';
-
+    
       // Outline traced from a radius function r(u), u = 0..1 around the turn
       function radial(rf, n, rot) {
         const out = [];
@@ -2261,7 +2354,7 @@
         }
         return out;
       }
-
+    
       // Points from angle a0 to a1 (degrees, inclusive) around cx, cy
       function arc(cx, cy, r, a0, a1, n) {
         if (r <= 0) return [[r3(cx), r3(cy)]];
@@ -2272,31 +2365,47 @@
         }
         return out;
       }
-
+    
       const circle = (r, n) => radial(() => r, n || SEG, 0);
-
-      // A round part's outline: R units out, with an edge profile
-      function outline(shape, R, teeth, depth, tip, rot) {
+    
+      // The radius function r(u) of an edge traced round the turn, and how many
+      // points it needs; null for shapes with corners (polygon, teardrop)
+      function profile(shape, R, teeth, depth) {
         const n = Math.max(3, Math.round(teeth));
         const d = Math.max(0, Math.min(depth, R * 0.5));
         if (shape === 'knurl') {
           // Round notches cut into the rim
           const w = 0.45;
-          return radial(u => {
-            const x = Math.abs(frac(u * n) - 0.5);
-            return x < w / 2 ? R - d * Math.sqrt(1 - Math.pow(2 * x / w, 2)) : R;
-          }, Math.max(SEG, n * 16), rot);
+          return {
+            rf: u => {
+              const x = Math.abs(frac(u * n) - 0.5);
+              return x < w / 2 ? R - d * Math.sqrt(1 - Math.pow(2 * x / w, 2)) : R;
+            },
+            n: Math.max(SEG, n * 16)
+          };
         }
-        if (shape === 'fluted') return radial(u => R - d * (0.5 - 0.5 * Math.cos(2 * Math.PI * u * n)), Math.max(SEG, n * 12), rot);
+        if (shape === 'fluted') return { rf: u => R - d * (0.5 - 0.5 * Math.cos(2 * Math.PI * u * n)), n: Math.max(SEG, n * 12) };
         if (shape === 'gear') {
           // Flat-bottomed notches with short ramps
           const w = 0.4;
           const ramp = 0.06;
-          return radial(u => {
-            const x = Math.abs(frac(u * n) - 0.5);
-            return R - d * Math.max(0, Math.min(1, (w / 2 + ramp - x) / ramp));
-          }, Math.max(SEG, n * 24), rot);
+          return {
+            rf: u => {
+              const x = Math.abs(frac(u * n) - 0.5);
+              return R - d * Math.max(0, Math.min(1, (w / 2 + ramp - x) / ramp));
+            },
+            n: Math.max(SEG, n * 24)
+          };
         }
+        if (shape === 'circle') return { rf: () => R, n: SEG };
+        return null;
+      }
+    
+      // A round part's outline: R units out, with an edge profile
+      function outline(shape, R, teeth, depth, tip, rot) {
+        const n = Math.max(3, Math.round(teeth));
+        const p = shape === 'circle' ? null : profile(shape, R, teeth, depth);
+        if (p) return radial(p.rf, p.n, rot);
         if (shape === 'polygon') {
           // A flat side faces the pointer
           const out = [];
@@ -2316,19 +2425,19 @@
         }
         return circle(R);
       }
-
+    
       // How far out a round texture can reach without crossing the edge
       function innerRadius(shape, R, teeth, depth) {
         if (shape === 'polygon') return R * Math.cos(Math.PI / Math.max(3, Math.round(teeth)));
         if (shape === 'knurl' || shape === 'fluted' || shape === 'gear') return R - Math.max(0, Math.min(depth, R * 0.5));
         return R;
       }
-
+    
       function body(s, v) {
         const b = s.body;
         return outline(b.shape, 50, b.teeth, b.depth, b.tip, turns(b.shape) ? pointerDeg(s, v) : 0);
       }
-
+    
       // The cap's radius less `inset` (its bevel), teeth scaled to match
       function capRadius(s, inset) {
         return Math.max(0.5, s.cap.size / 2 - (inset || 0));
@@ -2343,7 +2452,7 @@
         const R = capRadius(s, inset);
         return innerRadius(c.shape, R, c.teeth, c.depth * R / (c.size / 2));
       }
-
+    
       // The bar across the knob, pointing along the pointer. `inset` shrinks
       // it on every side for the raised face.
       function bar(s, v, inset) {
@@ -2373,9 +2482,9 @@
         const deg = pointerDeg(s, v);
         return P.map(p => turn(p[0], p[1], deg));
       }
-
+    
       const maxRadius = pts => pts.reduce((m, p) => Math.max(m, Math.hypot(p[0], p[1])), 0);
-
+    
       function bounds(polys) {
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         polys.forEach(P => P.forEach(p => {
@@ -2384,12 +2493,12 @@
         }));
         return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
       }
-
+    
       // Seeded so every frame and both sides get the same texture
       function rng(seed) {
         return () => (seed = (seed * 16807) % 2147483647) / 2147483647;
       }
-
+    
       // Machined rings for brushed metal, split into light and dark lines
       function brush(R) {
         const next = rng(97);
@@ -2402,7 +2511,7 @@
         }
         return out;
       }
-
+    
       // Fine specks for stone and matte plastic, turned by `deg` with the knob
       function grain(R, deg) {
         const next = rng(131);
@@ -2420,7 +2529,7 @@
         }
         return out;
       }
-
+    
       // Drop shadow offset for a part blurred by `blur`: one light for the whole
       // knob, casting `shadowDist`% of the blur toward `shadowAngle` (90 = down)
       function shadowShift(s, blur) {
@@ -2428,7 +2537,7 @@
         const a = rad(s.body.shadowAngle);
         return [r3(d * Math.cos(a)), r3(d * Math.sin(a))];
       }
-
+    
       function layout(s) {
         const bodyR = 50;
         const reach = 1 + s.body.shadowDist / 100; // a shadow's blur plus its offset
@@ -2455,7 +2564,7 @@
         if (deep(s)) extent = Math.max(extent, reach3d(s));
         return { bodyR, ringOn, ringIn, ringOut, ringMid: (ringIn + ringOut) / 2, tickIn, tickOut, labelR, barR, extent };
       }
-
+    
       function ticks(s) {
         const t = s.ticks;
         const n = Math.round(t.count);
@@ -2469,7 +2578,7 @@
         }
         return out;
       }
-
+    
       // Scale labels, centered on x, y
       function labels(s) {
         const t = s.ticks;
@@ -2484,7 +2593,7 @@
         for (let i = 0; i <= 10; i++) out.push(at(String(i), START + SWEEP * i / 10));
         return out;
       }
-
+    
       // Degrees the value ring covers at v: from 7:30, from 12 o'clock when
       // bipolar, or a short marker at the value when `single`
       function valueSpan(s, v) {
@@ -2492,7 +2601,7 @@
         if (s.ring.single) return [Math.max(START, a - 5), Math.min(START + SWEEP, a + 5)];
         return s.ring.bipolar ? [Math.min(270, a), Math.max(270, a)] : [START, a];
       }
-
+    
       function dotAngles(s) {
         const n = Math.round(s.ring.count);
         const last = s.endless ? n : n - 1;
@@ -2500,7 +2609,7 @@
         for (let i = 0; i < n; i++) out.push(startDeg(s) + sweepDeg(s) * i / last);
         return out;
       }
-
+    
       // Indexes of the lit dots: those inside the span (Vellum's LED ring
       // rule), or only the nearest one when `single` or endless
       function litDots(s, v) {
@@ -2512,7 +2621,7 @@
         A.forEach((a, i) => { if (a >= span[0] - 0.01 && a <= span[1] + 0.01) out.push(i); });
         return out;
       }
-
+    
       // ----- 3D: tilt, height and side walls -----
       // A 3D knob stacks the same layers at heights z (units): the body's top at
       // zB, a raised cap's top at zC, a raised bar's top at zR. The camera tilts
@@ -2528,9 +2637,9 @@
         return l.map(x => x / m);
       })();
       const GLOSS = 24;
-
+    
       const deep = s => !!(s.depth && s.depth.on);
-
+    
       // Share of the base radius left at height fraction u (0 base, 1 top)
       function bodyAt(s, u) {
         const d = s.depth;
@@ -2540,7 +2649,7 @@
         const t = s.depth.capTaper / 100;
         return s.depth.dome ? 1 - t * (1 - Math.sqrt(Math.max(0, 1 - u * u))) : 1 - t * u;
       }
-
+    
       function view(s) {
         const d = s.depth;
         const t = rad(d.tilt);
@@ -2558,7 +2667,7 @@
         // The whole knob, base to face, is centered in the ring and ticks
         return { ct: Math.cos(t), st: Math.sin(t), zB, zC, zBar, zR, zFace, zMid: zFace / 2, pk: d.persp * 0.00005, capOn, barOn, capTop, host };
       }
-
+    
       // Parts nearer the camera draw a little larger
       const grow = (V, z) => 1 + (z - V.zFace) * V.pk;
       function proj(V, x, y, z) {
@@ -2570,13 +2679,13 @@
         const g = grow(V, z);
         return { sx: g, sy: V.ct * g, ty: (z - V.zMid) * V.st };
       }
-
+    
       // Colors on a step of 8 so both sides get the same few, and Figma can
       // merge the faces of one color into one vector
       const mixRgb = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
       const rgbOf = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
       const hexOf = (c, step = 8) => '#' + c.map(x => ('0' + Math.max(0, Math.min(255, Math.round(x / step) * step)).toString(16)).slice(-2)).join('');
-
+    
       // Stops [t, value] around a turn, sorted, with the value where the last
       // meets the first added at 0 and 1 so the sweep closes; mix(a, b, w)
       function sweepStops(stops, mix) {
@@ -2587,7 +2696,7 @@
         const at = mix(a[1], b[1], gap > 0 ? (1 - a[0]) / gap : 0);
         return [[0, at]].concat(stops, [[1, at]]);
       }
-
+    
       function orient(P) {
         let a = 0;
         for (let i = 0; i < P.length; i++) {
@@ -2597,7 +2706,7 @@
         }
         return a >= 0 ? 1 : -1;
       }
-
+    
       // A wall around outline P (units) from z0 to z1; rAt(u) scales the outline
       // at height fraction u. look: c1 lit, c2 dark, shine, rim, grooves, ao, bands.
       // Returns quads in drawing order (far first), colored by light alone, then
@@ -2609,8 +2718,11 @@
       // band's center) through its faces' colors, returned as `rings` with no
       // faces, and its rim light is one sweep along the top (`rimRing`).
       // Sweep stops are [t, value], t the turn clockwise on screen from +x, 0..1.
+      // look.tops, if given, is the top height at each point of P instead of z1
+      // (a wall cut down under scoops); such a wall is never smooth.
       function wall(V, P, z0, z1, rAt, look) {
         const sgn = orient(P);
+        const topAt = i => (look.tops ? Math.max(z0, look.tops[i]) : z1);
         const n = P.length;
         const grooves = Math.round(look.grooves);
         const bands = grooves ? grooves * 2 + 1 : look.bands;
@@ -2644,6 +2756,12 @@
           for (let i = 0; i < n; i++) {
             const p = P[i];
             const q = P[(i + 1) % n];
+            const tp = topAt(i);
+            const tq = topAt((i + 1) % n);
+            const zpa = z0 + (tp - z0) * u0;
+            const zpb = z0 + (tp - z0) * u1;
+            const zqa = z0 + (tq - z0) * u0;
+            const zqb = z0 + (tq - z0) * u1;
             const tx = q[0] - p[0];
             const ty = q[1] - p[1];
             const tl = Math.hypot(tx, ty) || 1;
@@ -2652,7 +2770,7 @@
             // Outward normal, tipped up where the wall narrows toward the top
             let nx = sgn * ty / tl;
             let ny = -sgn * tx / tl;
-            let nz = (ra - rb) * (Math.hypot(mx, my) || 1) / Math.max(0.01, zb - za);
+            let nz = (ra - rb) * (Math.hypot(mx, my) || 1) / Math.max(0.01, (zpb - zpa + zqb - zqa) / 2);
             const m = Math.hypot(nx, ny, nz);
             nx /= m; ny /= m; nz /= m;
             if (nx * view3[0] + ny * view3[1] + nz * view3[2] <= 0.001) continue;
@@ -2663,7 +2781,7 @@
               spec = Math.round(16 * spec) / 16;
             }
             const c = mixRgb(mixRgb(dark, lit, Math.min(1, 0.12 + 0.95 * dif)), [255, 255, 255], spec);
-            const pts = [proj(V, p[0] * ra, p[1] * ra, za), proj(V, q[0] * ra, q[1] * ra, za), proj(V, q[0] * rb, q[1] * rb, zb), proj(V, p[0] * rb, p[1] * rb, zb)];
+            const pts = [proj(V, p[0] * ra, p[1] * ra, zpa), proj(V, q[0] * ra, q[1] * ra, zqa), proj(V, q[0] * rb, q[1] * rb, zqb), proj(V, p[0] * rb, p[1] * rb, zpb)];
             if (shade.alpha > 0) shade.polys.push(pts);
             if (look.smooth) {
               ring.polys.push(pts);
@@ -2716,16 +2834,166 @@
         }
         return { faces: faces.map(f => ({ pts: f.pts, color: f.color })), shades: shades.filter(sh => sh.polys.length), rims: rims.filter(r => r.alpha > 0) };
       }
-
-      // Narrow flat-bottomed slots up the body wall, turning with the knob
+    
+      // Narrow flat-bottomed slots up the body wall, turning with the knob. The
+      // wall follows the body's own edge, so slots sit in a knurled or fluted
+      // top's valleys (both center on the half step) when the counts match
       function slotted(s, v) {
         const d = s.depth;
+        const b = s.body;
         const count = Math.round(d.slots);
         const w = d.slotWidth / 100;
         const rot = pointerDeg(s, v);
-        return radial(u => (Math.abs(frac(u * count) - 0.5) < w / 2 ? 50 - d.slotDepth : 50), count * 48, rot);
+        const p = profile(b.shape, 50, b.teeth, b.depth) || { rf: () => 50, n: SEG };
+        return radial(u => (Math.abs(frac(u * count) - 0.5) < w / 2 ? p.rf(u) - d.slotDepth : p.rf(u)), Math.max(count * 48, p.n), rot);
       }
-
+    
+      // ----- Carving a round body's top: a rounded edge and scoops -----
+      // The rounded edge rolls the top face over into the side along a quarter
+      // circle `round` units across. Scoops are thumb-grip dishes cut down into
+      // the top edge: each a paraboloid centered just outside the rim, `scoopSize`
+      // units across on top and `scoopDepth`% of the height deep at the rim, so
+      // the base under them stays whole. They sit between the pointer's steps and
+      // turn with the knob; the light stays put. The top is the lowest of the
+      // flat face, the rounded edge and the dishes.
+      const wrapPi = x => x - 2 * Math.PI * Math.round(x / (2 * Math.PI));
+      function carve(s, v) {
+        if (!deep(s) || !s.body.on || s.body.shape !== 'circle') return null;
+        const d = s.depth;
+        const zB = Math.max(0.01, d.height);
+        const e = Math.min(d.round, zB * 0.9);
+        const n = Math.round(d.scoops);
+        let S = null;
+        if (n > 0) {
+          // Half the angle a scoop of size a takes on the rim; shrink scoops
+          // that would run into each other
+          const spread = a => {
+            const dc = 50 + 0.3 * a;
+            return Math.acos(Math.min(1, (2500 + dc * dc - a * a) / (100 * dc)));
+          };
+          let a = d.scoopSize;
+          while (a > 2 && spread(a) > 0.46 * Math.PI * 2 / n) a -= 0.25;
+          S = { n, a, dc: 50 + 0.3 * a, half: spread(a), Dp: zB * d.scoopDepth / 100 / 0.91, rot: rad(pointerDeg(s, v)) };
+        }
+        if (!(e > 0) && !S) return null;
+        // About 16 steps across each scoop: smooth, and a strip still builds in
+        // reasonable time
+        const C = { e, S, zB, nt: S ? Math.max(SEG, n * 24) : SEG };
+        // The flat face's edge at angle t: the rounded edge's start, or where a
+        // scoop cuts in
+        C.inner = t => Math.min(50 - e, scoopEdge(C.S, t));
+        return C;
+      }
+    
+      // The scoop nearest angle t: its center angle c and how far t is from it
+      function scoopAt(S, t) {
+        const step = 2 * Math.PI / S.n;
+        const c = S.rot + step * (Math.round((t - S.rot) / step - 0.5) + 0.5);
+        return { c, off: wrapPi(t - c) };
+      }
+    
+      // Where the ray at angle t meets a scoop's edge on top, or the rim (50)
+      function scoopEdge(S, t) {
+        if (!S) return 50;
+        const o = scoopAt(S, t).off;
+        if (Math.abs(o) >= S.half) return 50;
+        const h = S.dc * Math.sin(o);
+        return Math.min(50, S.dc * Math.cos(o) - Math.sqrt(Math.max(0, S.a * S.a - h * h)));
+      }
+    
+      // Height of the carved top at x, y and its normal
+      function carvedTop(C, x, y) {
+        const r = Math.hypot(x, y) || 1e-6;
+        let z = C.zB;
+        let nrm = [0, 0, 1];
+        if (C.e > 0 && r > 50 - C.e) {
+          const sn = Math.min(1, (r - 50 + C.e) / C.e);
+          const cs = Math.sqrt(1 - sn * sn);
+          z = C.zB - C.e + C.e * cs;
+          nrm = [sn * x / r, sn * y / r, cs];
+        }
+        if (C.S) {
+          const S = C.S;
+          const c = scoopAt(S, Math.atan2(y, x)).c;
+          const dx = x - S.dc * Math.cos(c);
+          const dy = y - S.dc * Math.sin(c);
+          const q = (dx * dx + dy * dy) / (S.a * S.a);
+          if (q < 1) {
+            const zd = C.zB - S.Dp * (1 - q);
+            if (zd < z) {
+              z = zd;
+              const gx = -2 * S.Dp * dx / (S.a * S.a);
+              const gy = -2 * S.Dp * dy / (S.a * S.a);
+              const m = Math.hypot(gx, gy, 1);
+              nrm = [gx / m, gy / m, 1 / m];
+            }
+          }
+        }
+        return { z, nrm };
+      }
+    
+      // The flat top face's outline, or null when the top isn't carved
+      function faceOutline(s, v) {
+        const C = carve(s, v);
+        return C ? radial(u => C.inner(2 * Math.PI * u), C.nt, 0) : null;
+      }
+    
+      // The carved part of the top: the rounded edge and the scoops' dishes,
+      // from the flat face's edge out to the rim, as wall-like quads lit by the
+      // one light in the side colors, plus light catching each scoop's lip.
+      // Returns { faces, shades, rims } like wall(), or null.
+      function lip(s, v) {
+        const C = carve(s, v);
+        if (!C) return null;
+        const V = view(s);
+        const look = wallLook(s, 'body');
+        const lit = rgbOf(look.c1);
+        const dark = rgbOf(look.c2);
+        const view3 = [0, -V.st, V.ct];
+        const half = [LIGHT[0] + view3[0], LIGHT[1] + view3[1], LIGHT[2] + view3[2]];
+        const hm = Math.hypot(half[0], half[1], half[2]);
+        const steps = 6;
+        const faces = [];
+        const rims = [];
+        const at = (t, r) => {
+          const x = r * Math.cos(t);
+          const y = r * Math.sin(t);
+          return proj(V, x, y, carvedTop(C, x, y).z);
+        };
+        for (let i = 0; i < C.nt; i++) {
+          const t0 = 2 * Math.PI * i / C.nt;
+          const t1 = 2 * Math.PI * (i + 1) / C.nt;
+          const r0 = C.inner(t0);
+          const r1 = C.inner(t1);
+          if (r0 > 49.999 && r1 > 49.999) continue;
+          for (let j = 0; j < steps; j++) {
+            const ra0 = r0 + (50 - r0) * j / steps;
+            const ra1 = r0 + (50 - r0) * (j + 1) / steps;
+            const rb0 = r1 + (50 - r1) * j / steps;
+            const rb1 = r1 + (50 - r1) * (j + 1) / steps;
+            const tm = (t0 + t1) / 2;
+            const rm = (ra0 + ra1 + rb0 + rb1) / 4;
+            const mx = rm * Math.cos(tm);
+            const my = rm * Math.sin(tm);
+            const T = carvedTop(C, mx, my);
+            const N = T.nrm;
+            if (N[0] * view3[0] + N[1] * view3[1] + N[2] * view3[2] <= 0.001) continue;
+            const dif = Math.round(20 * Math.max(0, N[0] * LIGHT[0] + N[1] * LIGHT[1] + N[2] * LIGHT[2])) / 20;
+            const spec = Math.round(16 * Math.min(1, Math.pow(Math.max(0, (N[0] * half[0] + N[1] * half[1] + N[2] * half[2]) / hm), GLOSS) * look.shine)) / 16;
+            const c = mixRgb(mixRgb(dark, lit, Math.min(1, 0.12 + 0.95 * dif)), [255, 255, 255], spec);
+            const pts = [at(t0, ra0), at(t1, rb0), at(t1, rb1), at(t0, ra1)];
+            faces.push({ pts, color: hexOf(c), depth: mx * view3[0] + my * view3[1] + T.z * view3[2] });
+            // Light catching a scoop's lip, where its dish faces the light
+            if (j === 0 && C.S && Math.min(r0, r1) < 50 - C.e - 0.01) {
+              const alpha = Math.round(10 * Math.min(1, look.rim * 1.5 * dif * dif)) / 10;
+              if (alpha > 0) rims.push({ a: pts[0], b: pts[1], alpha });
+            }
+          }
+        }
+        faces.sort((a, b) => a.depth - b.depth);
+        return { faces: faces.map(f => ({ pts: f.pts, color: f.color })), shades: [], rims };
+      }
+    
       function wallLook(s, part) {
         const d = s.depth;
         // Smooth: a plain round side, shaded in sweeps rather than steps, in
@@ -2735,34 +3003,43 @@
           return { c1: d.capC1, c2: d.capC2, shine: d.capShine / 100, rim: d.capRim / 100, grooves: d.capGrooves, ao: 0.3, bands: d.dome && d.capTaper > 0 ? (smooth ? 14 : 10) : (smooth ? 10 : 6), smooth };
         }
         if (part === 'bar') return { c1: d.barC1, c2: d.barC2, shine: d.barShine / 100, rim: 0.3, grooves: 0, ao: 0.3, bands: 3 };
-        const smooth = s.body.shape === 'circle' && !Math.round(d.grooves) && !(d.slots > 0);
+        const smooth = s.body.shape === 'circle' && !Math.round(d.grooves) && !(d.slots > 0) && !(Math.round(d.scoops) > 0);
         return { c1: d.c1, c2: d.c2, shine: d.shine / 100, rim: d.rim / 100, grooves: d.grooves, ao: 0.55, bands: smooth ? 16 : 8, smooth };
       }
-
+    
       // Every wall, in projected units: { body, cap, bar }, each { faces, rims } or null
       function walls(s, v) {
         const V = view(s);
         const d = s.depth;
         const out = { body: null, cap: null, bar: null };
         if (s.body.on) {
-          const side = d.slots > 0 ? slotted(s, v) : body(s, v);
-          const look = wallLook(s, 'body');
+          // A carved top lowers the wall: under the rounded edge everywhere,
+          // and down to each scoop's dish where one cuts the rim
+          const C = carve(s, v);
+          const side = C && C.S ? circle(50, C.nt) : d.slots > 0 ? slotted(s, v) : body(s, v);
+          let look = wallLook(s, 'body');
+          let top = V.zB;
+          if (C) {
+            top = V.zB - C.e;
+            look = Object.assign({}, look, { rim: C.e > 0 ? 0 : look.rim });
+            if (C.S) look.tops = side.map(p => carvedTop(C, p[0], p[1]).z);
+          }
           const band = d.band / 100;
           if (band > 0) {
             // A plain ring at the base, set in a little, under the shaped wall
             const inset = 1 - d.bandInset / 50;
-            const lo = wall(V, circle(50), 0, V.zB * band, u => inset * bodyAt(s, u * band), Object.assign({}, look, { rim: 0, grooves: 0, bands: 4, smooth: true }));
-            const hi = wall(V, side, V.zB * band, V.zB, u => bodyAt(s, band + u * (1 - band)), Object.assign({}, look, { ao: 0.15 }));
+            const lo = wall(V, circle(50), 0, V.zB * band, u => inset * bodyAt(s, u * band), Object.assign({}, look, { rim: 0, grooves: 0, bands: 4, smooth: true, tops: null }));
+            const hi = wall(V, side, V.zB * band, top, u => bodyAt(s, band + u * (1 - band)), Object.assign({}, look, { ao: 0.15 }));
             out.body = { faces: lo.faces.concat(hi.faces), shades: lo.shades.concat(hi.shades), rims: hi.rims, rings: (lo.rings || []).concat(hi.rings || []), rimRing: hi.rimRing };
           } else {
-            out.body = wall(V, side, 0, V.zB, u => bodyAt(s, u), look);
+            out.body = wall(V, side, 0, top, u => bodyAt(s, u), look);
           }
         }
         if (V.capOn) out.cap = wall(V, cap(s, v, 0), V.zB, V.zC, u => capAt(s, u), wallLook(s, 'cap'));
         if (V.barOn) out.bar = wall(V, bar(s, v, 0), V.zBar, V.zR, () => 1, wallLook(s, 'bar'));
         return out;
       }
-
+    
       // The shadow the base casts on the panel, and a tight contact shadow, in
       // projected units: blur is a standard deviation, off an [x, y] offset
       function shadows3d(s, v) {
@@ -2779,11 +3056,11 @@
           contact: { blur: 1.6, alpha: 0.55, off: [0, 0.8] }
         };
       }
-
+    
       // Where a printed scale is read: at 7:30 like every pointer's start, or at
       // 12 o'clock
       const markDeg = s => (s.print.mark === 'top' ? 270 : START);
-
+    
       // The panel's index mark: a small triangle just outside the knob at the
       // reading spot, pointing at the number printed on the knob
       function indexMark(s) {
@@ -2798,7 +3075,7 @@
         const at = (d, w) => [r3((edge + d) * c - w * sn), r3((edge + d) * sn + w * c)];
         return [at(7, -3.2), at(7, 3.2), at(1.8, 0)];
       }
-
+    
       // Printing that turns with the knob: a scale on the body's top face or its
       // wall (number i sits at the reading spot when v = i / 10; it starts at 0,
       // or at 1 with the 0 spot left blank), a label on the top face, and a
@@ -2827,7 +3104,7 @@
           const F = faceMap(V, z);
           return pts.map(q => [r3(F.sx * q[0]), r3(F.sy * q[1] + F.ty)]);
         };
-
+    
         // On a round wall of radius R·rAt(u) from z0 to z1
         const onWall = (R, z0, z1, rAt) => {
           const pt = (a, u, lift) => {
@@ -2855,7 +3132,7 @@
           const glyph = (text, size, f) => ({ text, size, alpha: fade(f.vis), m: [-f.T[0], -f.T[1], -f.U[0], -f.U[1], f.at[0], f.at[1]].map(r3) });
           return { frame, quad, glyph };
         };
-
+    
         if (s.body.on && p.scale === 'face') {
           for (let i = first; i <= 10; i++) {
             const a = rad(scaleDeg(i, 10));
@@ -2897,7 +3174,7 @@
         }
         return out;
       }
-
+    
       // How far a 3D knob reaches from the frame center, in units. Rotation-proof:
       // each part counts as a circle of its largest radius.
       function reach3d(s) {
@@ -2927,11 +3204,12 @@
         }
         return E;
       }
-
+    
       return {
         START, SWEEP, SEG, BASE, LIMITS, ENUMS, FILLS, BRUSH_STOPS, TEX,
         startDeg, sweepDeg, ringShown, labelsOn, pointerDeg, turns, outline, innerRadius, body, cap, capRadius, capInner, bar, maxRadius, bounds,
-        brush, grain, shadowShift, layout, ticks, labels, valueSpan, dotAngles, litDots, deep, markDeg, bodyAt, capAt, view, proj, faceMap, walls, shadows3d, indexMark, prints, reach3d
+        brush, grain, shadowShift, layout, ticks, labels, valueSpan, dotAngles, litDots, deep, markDeg, bodyAt, capAt, view, proj, faceMap, walls, shadows3d, indexMark, prints, reach3d,
+        faceOutline, lip
       };
     })();
 
@@ -3133,9 +3411,21 @@
         const P = KnobShapes.prints(s, v);
         drawWall(W.body);
         drawPrints(P.bodyWall);
+        drawWall(KnobShapes.lip(s, v));
         const top = clone(s);
         top.body.shadow = 0;
-        face(V.zB, top, { body: true, cap: !V.capOn, bar: !V.capOn && !V.barOn, ring: r.over && !V.capOn, pointer: V.host === 'body' });
+        // A carved top's face is clipped to its outline, like the mask on
+        // the Figma build; the rest of the face isn't
+        const carved = s.body.on && KnobShapes.faceOutline(s, v);
+        if (carved) {
+          const F = KnobShapes.faceMap(V, V.zB);
+          g.save();
+          g.setTransform(k * F.sx, 0, 0, k * F.sy, c0, c0 + k * F.ty);
+          g.clip(poly(carved));
+          face(V.zB, top, { body: true });
+          g.restore();
+        }
+        face(V.zB, top, { body: !carved, cap: !V.capOn, bar: !V.capOn && !V.barOn, ring: r.over && !V.capOn, pointer: V.host === 'body' });
         drawPrints(P.bodyFace);
         if (V.capOn) {
           drawWall(W.cap);
@@ -3568,6 +3858,13 @@
           ticks: { on: true, count: 11, color: '#8C8898', length: 6, width: 1.8, gap: 6 },
           depth: { on: true, height: 8, c1: '#3A3A3E', c2: '#08080A', rim: 20, shine: 15, capHeight: 32, capTaper: 4, capC1: '#3A3A3E', capC2: '#08080A', capRim: 25, capShine: 12 },
           print: { stripe: true, stripeColor: '#E8322A', stripeWidth: 5 } },
+        { id: 'scoop', group: 'pro', tier: 'pro', name: 'Scoop',
+          // A brushed hi-fi puck with thumb-grip scoops cut into the top edge
+          body: { fill: 'conic', c1: '#D8DADC', c2: '#55575B', brush: 55, sheen: 45, shadow: 14, shadowAlpha: 70, shadowDist: 20 },
+          cap: { on: true, size: 28, fill: 'conic', c1: '#B8BABC', c2: '#4A4C50', angle: 270, brush: 50, edge: 2, edgeColor: '#3A3B3E', bevel: 1.5, bevelC1: '#2A2A2C', bevelC2: '#9A9CA0', shadow: 6 },
+          pointer: { shape: 'line', color: '#5CC8FF', width: 3, length: 18, inset: 9, round: true, glow: 10 },
+          ring: { style: 'arc', width: 5, gap: 9, track: true, trackColor: '#141416', value: true, valueColor: '#5CC8FF' },
+          depth: { on: true, tilt: 10, persp: 15, height: 16, c1: '#C8CACE', c2: '#2A2A2E', shine: 40, rim: 70, round: 3, scoops: 8, scoopSize: 14, scoopDepth: 55, cast: 70 } },
 
         { id: 'darkKnob', group: 'pro', tier: 'pro', name: 'Dark Knob',
           // A knurled skirt lit from above, a grained face set in a bevel (lit
@@ -6437,7 +6734,7 @@
           const userStatus = document.getElementById('userStatus');
           userStatus.textContent = 'Free Version';
           userStatus.className = 'status-free';
-          ProDialog.open(msg.name || 'This design', c => c.getContext('2d').clearRect(0, 0, c.width, c.height), { feature: !!msg.feature });
+          ProDialog.open(msg.name || 'This design', c => c.getContext('2d').clearRect(0, 0, c.width, c.height), { feature: !!msg.feature, about: msg.about });
         } else if (msg.type === 'version-info') {
           // Handle version info from plugin
           PLUGIN_VERSION = msg.version || 'Unknown';
@@ -6468,14 +6765,19 @@
       let token = 0;
       const isOpen = () => $('proOverlay').classList.contains('active');
       const designText = $('proDialogText').textContent;
-      // opts.feature: a PRO feature (like saving designs) rather than a design
+      const featureText = {
+        designs: 'A PRO license saves your own designs from every studio, keeps them in every Figma file, and imports or exports them as files to back up or share.',
+        agent: 'A PRO license lets Claude Code or Codex drive the studios from your own computer: paste a reference image and the agent rebuilds it as a real, exportable control.'
+      };
+      // opts.feature: a PRO feature (like saving designs) rather than a design.
+      // opts.about picks the feature's text (default: saving designs).
       function open(name, drawFrame, opts) {
         const dlg = $('proOverlay');
         const c = $('proDialogCanvas');
         const feature = !!(opts && opts.feature);
         $('proDialogTitle').textContent = `${name} is a PRO ${feature ? 'feature' : 'design'}`;
         $('proDialogText').textContent = feature
-          ? 'A PRO license saves your own designs from every studio, keeps them in every Figma file, and imports or exports them as files to back up or share.'
+          ? featureText[opts.about] || featureText.designs
           : designText;
         dlg.classList.add('active');
         const mine = ++token;
@@ -6674,6 +6976,10 @@
           { type: 'range', key: 'depth.slots', label: 'Slots', min: 0, max: 36, step: 1, tip: 'Narrow slots running up the side' },
           { type: 'range', key: 'depth.slotWidth', label: 'Slot width', min: 2, max: 50, step: 1, unit: '%', when: s => s.depth.slots > 0 },
           { type: 'range', key: 'depth.slotDepth', label: 'Slot depth', min: 0, max: 8, step: 0.1, when: s => s.depth.slots > 0 },
+          { type: 'range', key: 'depth.round', label: 'Round edge', min: 0, max: 15, step: 0.5, tip: 'Rolls the top face over into the side in a soft curve', when: s => s.body.shape === 'circle' },
+          { type: 'range', key: 'depth.scoops', label: 'Scoops', min: 0, max: 16, step: 1, tip: 'Thumb-grip dishes cut down into the top edge. They stop part way down, so the base stays whole. They replace slots', when: s => s.body.shape === 'circle' },
+          { type: 'range', key: 'depth.scoopSize', label: 'Scoop size', min: 4, max: 30, step: 0.5, tip: 'How wide each scoop is across the top. Scoops that would touch are made smaller', when: s => s.body.shape === 'circle' && s.depth.scoops > 0 },
+          { type: 'range', key: 'depth.scoopDepth', label: 'Scoop depth', min: 10, max: 95, step: 1, unit: '%', tip: 'How far down the side each scoop cuts, as a share of the height', when: s => s.body.shape === 'circle' && s.depth.scoops > 0 },
           { type: 'range', key: 'depth.band', label: 'Base band', min: 0, max: 60, step: 1, unit: '%', tip: 'A plain ring at the bottom of the side, set in a little' },
           { type: 'range', key: 'depth.bandInset', label: 'Band inset', min: 0, max: 6, step: 0.1, when: s => s.depth.band > 0 },
           { type: 'range', key: 'depth.cast', label: 'Cast shadow', min: 0, max: 200, step: 1, unit: '%', tip: 'How far the knob\'s shadow falls on the panel. Blur, darkness and direction come from Body > Shadow' },
@@ -7190,7 +7496,7 @@
       name: 'panel', noun: 'panel', nouns: 'panels', Noun: 'Panel',
       core: PanelCore, firstPreset: 'darkPanel', keepOnPreset: [], idPrefix: 'pf-',
       still: true, wideThumbs: true,
-      views: [{ view: 'export', label: 'Vellum export' }],
+      views: [{ view: 'ui', label: 'Export UI' }, { view: 'export', label: 'Vellum export' }],
       dragHint: 'Hover a layer on the right to outline it',
       createTip: 'Adds the panel as a frame. Put your knobs, sliders and buttons inside it, then use Vellum export',
       readout: s => {
@@ -7298,6 +7604,172 @@
         if (m && m.type === 'export-prefs') set(m.x2 !== false, false);
       });
       return { get x2() { return x2; }, set, subscribe: fn => subs.push(fn) };
+    })();
+
+    // Agent mode: a socket to the vstgui-mcp bridge on this computer, which
+    // Claude Code or Codex talks to. Off until the user turns it on, and only
+    // after code.js says the license allows it. Requests from the bridge go to
+    // code.js (only the agent-* types, nothing else), and its agent-result
+    // replies go back down the socket with any PNG as base64.
+    const AgentLink = (() => {
+      const BRIDGE_URL = 'ws://localhost:7417';
+      const FORWARD = new Set([
+        'agent-hello', 'agent-schema', 'agent-build', 'agent-update', 'agent-snapshot', 'agent-read-selection', 'agent-strip',
+        'agent-panel-build', 'agent-panel-update', 'agent-place', 'agent-arrange', 'agent-remove', 'agent-label', 'agent-layout', 'agent-export'
+      ]);
+      const btn = document.getElementById('agentBtn');
+      const post = msg => parent.postMessage({ pluginMessage: msg }, '*');
+      let on = false;
+      let ws = null;
+      let retry = null;
+      let delay = 1000;
+      let enableId = null;
+      let asks = 0;
+
+      const titles = {
+        off: 'Off.',
+        connecting: 'Waiting for the vstgui-mcp bridge. Start Claude Code or Codex with it installed.',
+        connected: 'Connected to your agent.',
+        busy: 'Another VST GUI Pro window is already connected to your agent. Turn Agent off there to use it here.'
+      };
+      function show(state) {
+        btn.dataset.state = state;
+        btn.setAttribute('aria-pressed', String(on));
+        btn.title = 'Agent mode (PRO): let Claude Code or Codex on this computer drive the studios. ' + titles[state];
+      }
+
+      function base64(bytes) {
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return btoa(bin);
+      }
+
+      function connect() {
+        clearTimeout(retry);
+        if (!on) return;
+        show('connecting');
+        let sock;
+        try { sock = new WebSocket(BRIDGE_URL); } catch (e) { return later(); }
+        ws = sock;
+        sock.onopen = () => { if (ws === sock) { delay = 1000; show('connected'); } };
+        sock.onmessage = e => {
+          let m;
+          try { m = JSON.parse(e.data); } catch (err) { return; }
+          if (!m || !FORWARD.has(m.type) || typeof m.id !== 'string') return;
+          if (STEPS[m.type]) { step = STEPS[m.type](m); stepText(step + '…'); }
+          if (DRAWS.has(m.type) && !miniDismissed) miniShow(true);
+          post(m);
+        };
+        // 4001: the bridge already has another plugin window. The agent
+        // session ended, so the full window comes back.
+        sock.onclose = e => { if (ws === sock) { ws = null; miniShow(false); later(e.code === 4001 ? 'busy' : 'connecting'); } };
+      }
+      // Reconnects with backoff, up to every 10 s, while Agent mode is on
+      function later(state) {
+        if (!on) return;
+        show(state || 'connecting');
+        retry = setTimeout(connect, delay);
+        delay = Math.min(delay * 2, 10000);
+      }
+
+      // The compact bar. The first request that draws on the canvas shrinks
+      // the window to it, so the user sees the build instead of this window.
+      // Expand brings the full window back for the rest of the session.
+      const mini = document.getElementById('agentMini');
+      const miniStep = document.getElementById('agentMiniStep');
+      const DRAWS = new Set(['agent-build', 'agent-strip', 'agent-update', 'agent-panel-build', 'agent-panel-update', 'agent-place', 'agent-arrange', 'agent-label', 'agent-export']);
+      const STEPS = {
+        'agent-schema': m => `Reading the ${m.control || 'knob'} options`,
+        'agent-build': m => `Building a ${m.control || 'knob'}`,
+        'agent-strip': m => `Building a ${m.control || 'knob'} strip`,
+        'agent-update': () => 'Changing a control',
+        'agent-snapshot': () => 'Looking at the result',
+        'agent-read-selection': () => 'Reading the selection',
+        'agent-panel-build': () => 'Building the panel',
+        'agent-panel-update': () => 'Redrawing the panel',
+        'agent-place': m => `Placing ${m.name ? '“' + m.name + '”' : 'a ' + (m.control || 'knob')}`,
+        'agent-arrange': () => 'Lining controls up',
+        'agent-remove': () => 'Removing a control',
+        'agent-label': m => (m.text ? `Label “${m.text}”` : 'Changing a label'),
+        'agent-layout': () => 'Checking the layout',
+        'agent-export': () => 'Exporting the UI'
+      };
+      let miniOn = false;
+      let miniDismissed = false;
+      let fullSize = null;
+      let step = '';
+      function miniShow(yes) {
+        if (yes === miniOn) return;
+        miniOn = yes;
+        if (yes) fullSize = { width: window.innerWidth, height: window.innerHeight };
+        mini.hidden = !yes;
+        post({ type: 'agent-mini', on: yes, size: fullSize });
+      }
+      document.getElementById('agentMiniExpand').addEventListener('click', () => { miniDismissed = true; miniShow(false); });
+      function stepText(text) { miniStep.textContent = text; }
+
+      function stop() {
+        on = false;
+        clearTimeout(retry);
+        if (ws) { const sock = ws; ws = null; sock.close(); }
+        miniShow(false);
+        miniDismissed = false;
+        show('off');
+      }
+
+      btn.addEventListener('click', () => {
+        if (on) { stop(); return; }
+        // code.js checks the license; without one it shows the PRO dialog
+        enableId = 'ui-enable-' + (++asks);
+        post({ type: 'agent-enable', id: enableId });
+      });
+
+      const progress = document.getElementById('agentProgress');
+      window.addEventListener('message', e => {
+        const m = e.data && e.data.pluginMessage;
+        if (m && m.type === 'agent-progress') {
+          progress.textContent = Math.round(100 * m.done / Math.max(1, m.total)) + '%';
+          progress.hidden = false;
+          btn.title = `Agent mode: building a strip, frame ${m.done} of ${m.total}.`;
+          stepText(`${step || 'Building'}: ${progress.textContent}`);
+          // Lets the bridge know a long build is still going, so it doesn't time out
+          if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ id: m.id, progress: true, done: m.done, total: m.total }));
+          return;
+        }
+        // One file of an export_ui, written to disk by the bridge
+        if (m && m.type === 'agent-file') {
+          stepText(`Exporting: wrote ${m.path}`);
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            const f = { id: m.id, file: true, dir: m.dir, path: m.path };
+            if (m.bytes instanceof Uint8Array) f.data = base64(m.bytes);
+            else f.text = m.text;
+            ws.send(JSON.stringify(f));
+          }
+          return;
+        }
+        if (!m || m.type !== 'agent-result') return;
+        if (m.id !== enableId && step) stepText(m.ok ? `${step}: done. Waiting for your agent…` : `${step}: failed. Your agent has the details.`);
+        if (!progress.hidden) {
+          progress.hidden = true;
+          show(btn.dataset.state);
+        }
+        if (m.id === enableId) {
+          enableId = null;
+          if (m.ok) { on = true; delay = 1000; connect(); }
+          return;
+        }
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const out = Object.assign({}, m);
+        delete out.type;
+        if (out.png instanceof Uint8Array) out.png = base64(out.png);
+        ws.send(JSON.stringify(out));
+        // The license went away while connected: the agent now knows why, so
+        // turn Agent mode off too
+        if (m.error === 'pro-required') stop();
+      });
+
+      show('off');
+      return { stop, get on() { return on; } };
     })();
 
     function studioMarkup(cfg) {
@@ -8434,6 +8906,161 @@
       const block = document.getElementById('vellumExportBlock');
       PanelStudio.pane('export').appendChild(block);
       block.hidden = false;
+      const ui = document.getElementById('uiExportBlock');
+      PanelStudio.pane('ui').appendChild(ui);
+      ui.hidden = false;
+    })();
+
+    // A store-only zip (no compression: PNGs are compressed already), so
+    // Export UI downloads as one file without a library
+    const Zip = (() => {
+      const table = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        table[n] = c >>> 0;
+      }
+      function crc32(b) {
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < b.length; i++) c = table[(c ^ b[i]) & 0xFF] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+      }
+      // files: [{ path, bytes: Uint8Array }] -> Uint8Array
+      function build(files) {
+        const enc = new TextEncoder();
+        const now = new Date();
+        const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+        const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+        const parts = [];
+        const central = [];
+        let offset = 0;
+        files.forEach(f => {
+          const name = enc.encode(f.path);
+          const crc = crc32(f.bytes);
+          const head = (sig, size) => {
+            const v = new DataView(new ArrayBuffer(size));
+            v.setUint32(0, sig, true);
+            return v;
+          };
+          const L = head(0x04034b50, 30);
+          L.setUint16(4, 20, true); L.setUint16(6, 0x0800, true); L.setUint16(8, 0, true);
+          L.setUint16(10, time, true); L.setUint16(12, date, true); L.setUint32(14, crc, true);
+          L.setUint32(18, f.bytes.length, true); L.setUint32(22, f.bytes.length, true); L.setUint16(26, name.length, true);
+          parts.push(new Uint8Array(L.buffer), name, f.bytes);
+          const C = head(0x02014b50, 46);
+          C.setUint16(4, 20, true); C.setUint16(6, 20, true); C.setUint16(8, 0x0800, true); C.setUint16(10, 0, true);
+          C.setUint16(12, time, true); C.setUint16(14, date, true); C.setUint32(16, crc, true);
+          C.setUint32(20, f.bytes.length, true); C.setUint32(24, f.bytes.length, true); C.setUint16(28, name.length, true);
+          C.setUint32(42, offset, true);
+          central.push(new Uint8Array(C.buffer), name);
+          offset += 30 + name.length + f.bytes.length;
+        });
+        const centralSize = central.reduce((n, p) => n + p.length, 0);
+        const E = new DataView(new ArrayBuffer(22));
+        E.setUint32(0, 0x06054b50, true); E.setUint16(8, files.length, true); E.setUint16(10, files.length, true);
+        E.setUint32(12, centralSize, true); E.setUint32(16, offset, true);
+        const all = parts.concat(central, [new Uint8Array(E.buffer)]);
+        const out = new Uint8Array(all.reduce((n, p) => n + p.length, 0));
+        let at = 0;
+        all.forEach(p => { out.set(p, at); at += p.length; });
+        return out;
+      }
+      return { build, crc32 };
+    })();
+
+    // ===== Export UI =====
+    // code.js builds every strip and the background and sends the files one
+    // at a time; they're zipped here and saved like Download PNG saves.
+    (() => {
+      const $ = id => document.getElementById(id);
+      const btn = $('uiExportBtn');
+      const cancel = $('uiExportCancel');
+      const status = $('uiExportStatus');
+      const prog = $('uiExportProgress');
+      const list = $('uiExportFiles');
+      const notes = $('uiExportNotes');
+      const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      let job = null;
+      let seq = 0;
+
+      // An empty box means the type's default
+      const frames = id => {
+        const n = parseInt($(id).value, 10);
+        return n >= 2 ? Math.min(256, n) : undefined;
+      };
+      function busy(on) {
+        btn.disabled = on;
+        cancel.hidden = !on;
+        prog.hidden = !on;
+      }
+      function say(text, kind) {
+        status.hidden = false;
+        status.className = 'vellum-status ' + (kind || 'ok');
+        status.textContent = text;
+      }
+
+      btn.addEventListener('click', () => {
+        job = { id: 'ui-export-' + (++seq), files: [] };
+        busy(true);
+        status.hidden = notes.hidden = list.hidden = true;
+        $('uiExportEmpty').hidden = true;
+        $('uiExportBarFill').style.width = '0';
+        $('uiExportProgressText').textContent = 'Starting…';
+        parent.postMessage({ pluginMessage: {
+          type: 'export-ui', id: job.id, x2: ExportPrefs.x2,
+          frames: { knob: frames('uiFramesKnob'), slider: frames('uiFramesSlider'), meter: frames('uiFramesMeter'), wheel: frames('uiFramesWheel') }
+        } }, '*');
+      });
+      cancel.addEventListener('click', () => {
+        if (job) parent.postMessage({ pluginMessage: { type: 'export-ui-cancel', id: job.id } }, '*');
+      });
+
+      function save(bytes, name) {
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        const a = document.createElement('a');
+        a.href = 'data:application/zip;base64,' + btoa(bin);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+
+      window.addEventListener('message', e => {
+        const m = e.data && e.data.pluginMessage;
+        if (!m || m.type !== 'export-ui-status' || !job || m.id !== job.id) return;
+        if (m.phase === 'file') {
+          job.files.push({ path: m.path, bytes: m.bytes instanceof Uint8Array ? m.bytes : new TextEncoder().encode(m.text || '') });
+          return;
+        }
+        if (m.phase === 'build') {
+          const pct = Math.round(100 * m.done / Math.max(1, m.total));
+          $('uiExportBarFill').style.width = pct + '%';
+          $('uiExportProgressText').textContent = `${pct}% · frame ${m.done} of ${m.total}`;
+          return;
+        }
+        busy(false);
+        if (m.phase === 'cancelled') { say('Export cancelled. Nothing was saved.', 'error'); job = null; return; }
+        if (m.phase === 'error') { say(m.error, 'error'); job = null; return; }
+        // done
+        const files = job.files;
+        job = null;
+        if (files.length) save(Zip.build(files), m.zipName);
+        const size = files.reduce((n, f) => n + f.bytes.length, 0);
+        const saved = `${m.controls} control${m.controls === 1 ? '' : 's'}, ${m.strips} strip${m.strips === 1 ? '' : 's'}, ${files.length} files (${(size / 1048576).toFixed(1)} MB) saved as ${m.zipName}`;
+        const missing = m.errors.length + m.blocked.length;
+        if (missing) say(`⚠ ${saved}. ${missing} control${missing === 1 ? ' was' : 's were'} left out: see below.`, 'error');
+        else say('✓ ' + saved);
+        list.innerHTML = files.map(f => `<li>${esc(f.path)}</li>`).join('');
+        list.hidden = !files.length;
+        const n = [];
+        m.fallbacks.forEach(t => n.push(t));
+        if (m.blocked.length) n.push(`Left out (PRO): ${m.blocked.join(', ')}`);
+        if (m.skipped.length) n.push(`Skipped: ${m.skipped.join(', ')}`);
+        m.errors.forEach(t => n.push(t));
+        notes.innerHTML = n.map(t => `<li>${esc(t)}</li>`).join('');
+        notes.hidden = !n.length;
+      });
     })();
 
     // ===== BYOC: bring your own component =====
@@ -9947,6 +10574,17 @@
     // here with each release that has something worth showing.
     const WhatsNew = (() => {
       const NOTES = {
+        '2.3.0': {
+          title: 'Agent mode (MCP)',
+          knobs: ['scoop', 'goldSlot', 'studio3d'],
+          tab: 'knobs', preset: 'scoop',
+          items: [
+            'PRO: build your UI by talking to **Claude Code** or **Codex**. Paste a sketch, then click **Agent** in the header.',
+            'Also new: **Export UI** in Panels, and **Scoop** 3D knobs.',
+            'Setup: copy this into your agent:'
+          ],
+          copy: 'Install vstgui-mcp from https://www.npmjs.com/package/vstgui-mcp'
+        },
         '2.2.0': {
           title: '3D knobs',
           knobs: ['studio3d', 'witchHat', 'goldSlot'],
@@ -9969,6 +10607,9 @@
         $('whatsNewTag').textContent = 'New in ' + n.version;
         $('whatsNewTitle').textContent = n.title;
         $('whatsNewList').innerHTML = n.items.map(s => '<li>' + esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') + '</li>').join('');
+        $('whatsNewCopy').hidden = !n.copy;
+        $('whatsNewCopyText').textContent = n.copy || '';
+        $('whatsNewCopyBtn').textContent = 'Copy';
         const box = $('whatsNewKnobs');
         box.innerHTML = '';
         const specs = (n.knobs || []).map(id => KnobCore.preset(id));
@@ -10014,6 +10655,19 @@
       $('whatsNewOk').addEventListener('click', close);
       $('whatsNewClose').addEventListener('click', close);
       $('whatsNewTry').addEventListener('click', tryIt);
+      // navigator.clipboard is blocked in the plugin iframe; execCommand still works
+      $('whatsNewCopyBtn').addEventListener('click', () => {
+        if (!note || !note.copy) return;
+        const ta = document.createElement('textarea');
+        ta.value = note.copy;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const copied = document.execCommand('copy');
+        ta.remove();
+        $('whatsNewCopyBtn').textContent = copied ? 'Copied!' : 'Copy failed';
+      });
       document.addEventListener('keydown', e => { if (e.key === 'Escape' && note) close(); });
       window.addEventListener('message', e => {
         const m = e.data && e.data.pluginMessage;

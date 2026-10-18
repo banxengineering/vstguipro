@@ -9,8 +9,10 @@
   ],
   "networkAccess": {
     "allowedDomains": [
-      "https://dev-banxengineering.pythonanywhere.com"
-    ]
+      "https://dev-banxengineering.pythonanywhere.com",
+      "ws://localhost:7417"
+    ],
+    "reasoning": "Agent mode connects to vstgui-mcp, a small bridge on the user's own computer, so their AI agent (Claude Code or Codex) can build controls in the plugin. It's off by default and only connects when the user clicks Agent. The pythonanywhere domain checks PRO licenses."
   },
   "permissions": [
     "currentuser"

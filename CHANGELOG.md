@@ -6,6 +6,10 @@
 - Once submitted for approval
 - The user community will have input on future features
 
+## [2.3.1] - 2026-11-13
+### Added
+- **Turn** for 3D knobs (Knob studio, 3D section): swing the camera left or right around the knob, as well as up and down with **Tilt**. Above 0 shows the knob's right side, below 0 its left. The light stays put, so the lit side and the shadows stay where they were. Works on every 3D knob and on your own designs, and the agent can set it too (`depth.turn`). At 0, knobs look exactly as before
+
 ## [2.3.0] - 2026-10-18
 ### Added
 - **Agent mode** (PRO): build your plugin UI by talking to **Claude Code** or **Codex**. Paste a sketch, a screenshot or a description, and the agent builds it in Figma: the panel at your window size, every knob, slider, button, meter and wheel in place, and the labels. Then ask for changes in plain words ("make the background a blue to purple gradient", "move the meters 10 px out") or with a marked-up screenshot

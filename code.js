@@ -1,8 +1,8 @@
 "use strict";
 
 // Version constants
-const VERSION = "2.3.0";
-const BUILD_DATE = "10-18-2026";
+const VERSION = "2.3.1";
+const BUILD_DATE = "11-13-2026";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -947,7 +947,7 @@ const KnobShapes = (() => {
     pointer: { shape: 'line', color: '#FFFFFF', width: 5, length: 18, inset: 6, round: true, glow: 0, edge: 0, edgeColor: '#000000' },
     ring: { style: 'arc', width: 6, gap: 5, count: 21, round: false, track: true, trackColor: '#3A3A42', value: true, valueColor: '#8A5CF6', opacity: 100, glow: 0, bipolar: false, single: false, over: false },
     ticks: { on: false, count: 11, color: '#8C8898', length: 7, width: 1.5, gap: 4, major: 0, majorLength: 11, labels: 'none', labelSize: 9, labelColor: '#C8C6D0' },
-    depth: { on: false, tilt: 26, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, round: 0, scoops: 0, scoopSize: 12, scoopDepth: 50, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
+    depth: { on: false, tilt: 26, turn: 0, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, round: 0, scoops: 0, scoopSize: 12, scoopDepth: 50, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
     print: { scale: 'none', from1: false, mark: 'start', color: '#F2F2F2', size: 8, radius: 42, ticks: 0, at: 30, index: false, indexColor: '#1A1917', label: '', labelColor: '#141414', labelSize: 7, stripe: false, stripeColor: '#E8322A', stripeWidth: 5 }
   };
 
@@ -964,7 +964,7 @@ const KnobShapes = (() => {
     'ring.width': [1, 40], 'ring.gap': [-30, 40], 'ring.count': [3, 64], 'ring.opacity': [0, 100], 'ring.glow': [0, 20],
     'ticks.count': [2, 61], 'ticks.length': [1, 30], 'ticks.width': [0, 10], 'ticks.gap': [0, 60],
     'ticks.major': [0, 10], 'ticks.majorLength': [1, 30], 'ticks.labelSize': [4, 24],
-    'depth.tilt': [-60, 60], 'depth.persp': [0, 100], 'depth.height': [0, 80], 'depth.flare': [0, 40], 'depth.shine': [0, 100], 'depth.rim': [0, 100],
+    'depth.tilt': [-60, 60], 'depth.turn': [-60, 60], 'depth.persp': [0, 100], 'depth.height': [0, 80], 'depth.flare': [0, 40], 'depth.shine': [0, 100], 'depth.rim': [0, 100],
     'depth.grooves': [0, 12], 'depth.slots': [0, 36], 'depth.slotWidth': [2, 50], 'depth.slotDepth': [0, 8], 'depth.band': [0, 60], 'depth.bandInset': [0, 6],
     'depth.round': [0, 15], 'depth.scoops': [0, 16], 'depth.scoopSize': [4, 30], 'depth.scoopDepth': [10, 95],
     'depth.capHeight': [0, 60], 'depth.capTaper': [0, 60], 'depth.capShine': [0, 100], 'depth.capRim': [0, 100], 'depth.capGrooves': [0, 12],
@@ -1304,6 +1304,8 @@ const KnobShapes = (() => {
   // two heights, lit per quad by one fixed light, so ridges on the wall turn
   // with the knob while the lighting stays put. Positive tilt looks down on
   // the knob and shows the wall above the face; negative looks up from below.
+  // `turn` then swings the camera round the knob's left or right: positive
+  // shows the right side, and the faces slant (faceMap's sh and tx).
   const LIGHT = (() => {
     const l = [-0.45, -0.75, 0.55];
     const m = Math.hypot(l[0], l[1], l[2]);
@@ -1326,6 +1328,7 @@ const KnobShapes = (() => {
   function view(s) {
     const d = s.depth;
     const t = rad(d.tilt);
+    const p = rad(d.turn || 0);
     const capOn = s.cap.on && d.capHeight > 0;
     const barOn = s.bar.on && d.barHeight > 0;
     const zB = Math.max(0.01, d.height);
@@ -1338,19 +1341,20 @@ const KnobShapes = (() => {
     const pr = 50 - s.pointer.inset;
     const host = barOn ? 'bar' : capOn && pr <= capRadius(s, 0) * capTop + 1 ? 'cap' : 'body';
     // The whole knob, base to face, is centered in the ring and ticks
-    return { ct: Math.cos(t), st: Math.sin(t), zB, zC, zBar, zR, zFace, zMid: zFace / 2, pk: d.persp * 0.00005, capOn, barOn, capTop, host };
+    return { ct: Math.cos(t), st: Math.sin(t), cp: Math.cos(p), sp: Math.sin(p), v3: [Math.sin(p), -Math.cos(p) * Math.sin(t), Math.cos(p) * Math.cos(t)], zB, zC, zBar, zR, zFace, zMid: zFace / 2, pk: d.persp * 0.00005, capOn, barOn, capTop, host };
   }
 
   // Parts nearer the camera draw a little larger
   const grow = (V, z) => 1 + (z - V.zFace) * V.pk;
   function proj(V, x, y, z) {
     const g = grow(V, z);
-    return [r3(x * g), r3(y * V.ct * g + (z - V.zMid) * V.st)];
+    const dz = z - V.zMid;
+    return [r3(g * (x * V.cp + y * V.sp * V.st) - dz * V.sp * V.ct), r3(y * V.ct * g + dz * V.st)];
   }
-  // A face at height z: unit x, y land at x·sx, y·sy + ty
+  // A face at height z: unit x, y land at x·sx + y·sh + tx, y·sy + ty
   function faceMap(V, z) {
     const g = grow(V, z);
-    return { sx: g, sy: V.ct * g, ty: (z - V.zMid) * V.st };
+    return { sx: g * V.cp, sy: V.ct * g, sh: g * V.sp * V.st, tx: -(z - V.zMid) * V.sp * V.ct, ty: (z - V.zMid) * V.st };
   }
 
   // Colors on a step of 8 so both sides get the same few, and Figma can
@@ -1401,7 +1405,7 @@ const KnobShapes = (() => {
     const bands = grooves ? grooves * 2 + 1 : look.bands;
     const lit = rgbOf(look.c1);
     const dark = rgbOf(look.c2);
-    const view3 = [0, -V.st, V.ct];
+    const view3 = V.v3;
     const half = [LIGHT[0] + view3[0], LIGHT[1] + view3[1], LIGHT[2] + view3[2]];
     const hm = Math.hypot(half[0], half[1], half[2]);
     const faces = [];
@@ -1622,7 +1626,7 @@ const KnobShapes = (() => {
     const look = wallLook(s, 'body');
     const lit = rgbOf(look.c1);
     const dark = rgbOf(look.c2);
-    const view3 = [0, -V.st, V.ct];
+    const view3 = V.v3;
     const half = [LIGHT[0] + view3[0], LIGHT[1] + view3[1], LIGHT[2] + view3[2]];
     const hm = Math.hypot(half[0], half[1], half[2]);
     const steps = 6;
@@ -1771,11 +1775,11 @@ const KnobShapes = (() => {
       const F = faceMap(V, z);
       const c = Math.cos(a);
       const sn = Math.sin(a);
-      return [F.sx * c, F.sy * sn, -F.sx * sn, F.sy * c, F.sx * x, F.sy * y + F.ty].map(r3);
+      return [F.sx * c + F.sh * sn, F.sy * sn, F.sh * c - F.sx * sn, F.sy * c, F.sx * x + F.sh * y + F.tx, F.sy * y + F.ty].map(r3);
     };
     const faceQuad = (z, pts) => {
       const F = faceMap(V, z);
-      return pts.map(q => [r3(F.sx * q[0]), r3(F.sy * q[1] + F.ty)]);
+      return pts.map(q => [r3(F.sx * q[0] + F.sh * q[1] + F.tx), r3(F.sy * q[1] + F.ty)]);
     };
 
     // On a round wall of radius R·rAt(u) from z0 to z1
@@ -1855,7 +1859,17 @@ const KnobShapes = (() => {
     let E = 0;
     const fit = (R, z, pad) => {
       const g = grow(V, z);
-      E = Math.max(E, R * g + pad, R * V.ct * g + Math.abs((z - V.zMid) * V.st) + pad);
+      if (!V.sp) {
+        E = Math.max(E, R * g + pad, R * V.ct * g + Math.abs((z - V.zMid) * V.st) + pad);
+        return;
+      }
+      // Turned, the face is a slanted ellipse: take its farthest point
+      const F = faceMap(V, z);
+      for (let a = 0; a < 72; a++) {
+        const x = R * Math.cos(a * Math.PI / 36);
+        const y = R * Math.sin(a * Math.PI / 36);
+        E = Math.max(E, Math.hypot(F.sx * x + F.sh * y + F.tx, F.sy * y + F.ty) + pad);
+      }
     };
     if (s.body.on) {
       const R = maxRadius(body(s, 0));
@@ -2040,22 +2054,31 @@ function knobEdge(node, widthPx, hex) {
 // Where unit point x, y lands in the frame, in px
 function knobPt(ctx, x, y) {
     const m = ctx.map;
-    return m ? [m.tx + x * m.sx, m.ty + y * m.sy] : [ctx.c + x * ctx.k, ctx.c + y * ctx.k];
+    return m ? [m.tx + x * m.sx + y * m.sh, m.ty + y * m.sy] : [ctx.c + x * ctx.k, ctx.c + y * ctx.k];
 }
 
 // On a tilted face circles become ellipses and turned rectangles become
 // slanted, so those parts are built as vectors instead
-const knobTilted = ctx => !!ctx.map && ctx.map.sx !== ctx.map.sy;
+const knobTilted = ctx => !!ctx.map && (ctx.map.sx !== ctx.map.sy || ctx.map.sh !== 0);
 
 function knobCircleAt(ctx, name, dist, deg, r) {
     const n = figma.createEllipse();
     ctx.f.appendChild(n);
     n.name = name;
     const t = deg * Math.PI / 180;
-    const w = Math.max(0.01, 2 * r * (ctx.map ? ctx.map.sx : ctx.k));
-    const h = Math.max(0.01, 2 * r * (ctx.map ? ctx.map.sy : ctx.k));
+    const m = ctx.map;
+    const w = Math.max(0.01, 2 * r * (m ? m.sx : ctx.k));
+    const h = Math.max(0.01, 2 * r * (m ? Math.hypot(m.sh, m.sy) : ctx.k));
     n.resize(w, h);
     const p = knobPt(ctx, dist * Math.cos(t), dist * Math.sin(t));
+    if (m && m.sh !== 0) {
+        // A turned face slants: skew the ellipse so its y axis runs along
+        // the face's (sh, sy), centered on p
+        const ex = m.sh / Math.hypot(m.sh, m.sy);
+        const ey = m.sy / Math.hypot(m.sh, m.sy);
+        n.relativeTransform = [[1, ex, p[0] - w / 2 - ex * h / 2], [0, ey, p[1] - ey * h / 2]];
+        return n;
+    }
     n.x = p[0] - w / 2;
     n.y = p[1] - h / 2;
     return n;
@@ -2433,7 +2456,7 @@ function knobBuildPointer(ctx, v) {
 // px per unit and offsets for the face at height z
 function knobMapAt(ctx, V, z) {
     const F = KnobShapes.faceMap(V, z);
-    return { sx: ctx.k * F.sx, sy: ctx.k * F.sy, tx: ctx.c, ty: ctx.c + ctx.k * F.ty };
+    return { sx: ctx.k * F.sx, sy: ctx.k * F.sy, sh: ctx.k * F.sh, tx: ctx.c + ctx.k * F.tx, ty: ctx.c + ctx.k * F.ty };
 }
 
 // One frame's walls and printing, worked out once per frame

@@ -1378,6 +1378,7 @@
   .wn-copy button { flex: 0 0 auto; width: auto; margin: 0; padding: 4px 10px; font-size: 11px; background: #3c3c3c; }
   .wn-copy button:hover { background: #4a4a4a; }
   .wn-list li + li { margin-top: 4px; }
+  .wn-list[hidden] { display: none; }
   @media (prefers-reduced-motion: reduce) { .kl-chev { transition: none; } }
 
   /* Window resize grip (the plugin window itself can't be dragged larger) */
@@ -1872,6 +1873,7 @@
         <code id="whatsNewCopyText"></code>
         <button type="button" class="btn-secondary" id="whatsNewCopyBtn">Copy</button>
       </div>
+      <ul class="wn-list" id="whatsNewMore" hidden></ul>
       <div class="pro-dialog-actions">
         <button type="button" class="btn-primary" id="whatsNewTry">Try it</button>
         <button type="button" class="btn-secondary" id="whatsNewOk">Got it</button>
@@ -2274,7 +2276,7 @@
         pointer: { shape: 'line', color: '#FFFFFF', width: 5, length: 18, inset: 6, round: true, glow: 0, edge: 0, edgeColor: '#000000' },
         ring: { style: 'arc', width: 6, gap: 5, count: 21, round: false, track: true, trackColor: '#3A3A42', value: true, valueColor: '#8A5CF6', opacity: 100, glow: 0, bipolar: false, single: false, over: false },
         ticks: { on: false, count: 11, color: '#8C8898', length: 7, width: 1.5, gap: 4, major: 0, majorLength: 11, labels: 'none', labelSize: 9, labelColor: '#C8C6D0' },
-        depth: { on: false, tilt: 26, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, round: 0, scoops: 0, scoopSize: 12, scoopDepth: 50, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
+        depth: { on: false, tilt: 26, turn: 0, persp: 35, height: 22, flare: 0, cone: false, c1: '#7A7A82', c2: '#141416', shine: 0, rim: 25, grooves: 0, slots: 0, slotWidth: 14, slotDepth: 3, band: 0, bandInset: 1.5, round: 0, scoops: 0, scoopSize: 12, scoopDepth: 50, capHeight: 0, capTaper: 0, dome: false, capC1: '#7A7A82', capC2: '#141416', capShine: 0, capRim: 30, capGrooves: 0, barHeight: 0, barC1: '#6A6A70', barC2: '#141416', barShine: 0, cast: 100 },
         print: { scale: 'none', from1: false, mark: 'start', color: '#F2F2F2', size: 8, radius: 42, ticks: 0, at: 30, index: false, indexColor: '#1A1917', label: '', labelColor: '#141414', labelSize: 7, stripe: false, stripeColor: '#E8322A', stripeWidth: 5 }
       };
     
@@ -2291,7 +2293,7 @@
         'ring.width': [1, 40], 'ring.gap': [-30, 40], 'ring.count': [3, 64], 'ring.opacity': [0, 100], 'ring.glow': [0, 20],
         'ticks.count': [2, 61], 'ticks.length': [1, 30], 'ticks.width': [0, 10], 'ticks.gap': [0, 60],
         'ticks.major': [0, 10], 'ticks.majorLength': [1, 30], 'ticks.labelSize': [4, 24],
-        'depth.tilt': [-60, 60], 'depth.persp': [0, 100], 'depth.height': [0, 80], 'depth.flare': [0, 40], 'depth.shine': [0, 100], 'depth.rim': [0, 100],
+        'depth.tilt': [-60, 60], 'depth.turn': [-60, 60], 'depth.persp': [0, 100], 'depth.height': [0, 80], 'depth.flare': [0, 40], 'depth.shine': [0, 100], 'depth.rim': [0, 100],
         'depth.grooves': [0, 12], 'depth.slots': [0, 36], 'depth.slotWidth': [2, 50], 'depth.slotDepth': [0, 8], 'depth.band': [0, 60], 'depth.bandInset': [0, 6],
         'depth.round': [0, 15], 'depth.scoops': [0, 16], 'depth.scoopSize': [4, 30], 'depth.scoopDepth': [10, 95],
         'depth.capHeight': [0, 60], 'depth.capTaper': [0, 60], 'depth.capShine': [0, 100], 'depth.capRim': [0, 100], 'depth.capGrooves': [0, 12],
@@ -2631,6 +2633,8 @@
       // two heights, lit per quad by one fixed light, so ridges on the wall turn
       // with the knob while the lighting stays put. Positive tilt looks down on
       // the knob and shows the wall above the face; negative looks up from below.
+      // `turn` then swings the camera round the knob's left or right: positive
+      // shows the right side, and the faces slant (faceMap's sh and tx).
       const LIGHT = (() => {
         const l = [-0.45, -0.75, 0.55];
         const m = Math.hypot(l[0], l[1], l[2]);
@@ -2653,6 +2657,7 @@
       function view(s) {
         const d = s.depth;
         const t = rad(d.tilt);
+        const p = rad(d.turn || 0);
         const capOn = s.cap.on && d.capHeight > 0;
         const barOn = s.bar.on && d.barHeight > 0;
         const zB = Math.max(0.01, d.height);
@@ -2665,19 +2670,20 @@
         const pr = 50 - s.pointer.inset;
         const host = barOn ? 'bar' : capOn && pr <= capRadius(s, 0) * capTop + 1 ? 'cap' : 'body';
         // The whole knob, base to face, is centered in the ring and ticks
-        return { ct: Math.cos(t), st: Math.sin(t), zB, zC, zBar, zR, zFace, zMid: zFace / 2, pk: d.persp * 0.00005, capOn, barOn, capTop, host };
+        return { ct: Math.cos(t), st: Math.sin(t), cp: Math.cos(p), sp: Math.sin(p), v3: [Math.sin(p), -Math.cos(p) * Math.sin(t), Math.cos(p) * Math.cos(t)], zB, zC, zBar, zR, zFace, zMid: zFace / 2, pk: d.persp * 0.00005, capOn, barOn, capTop, host };
       }
     
       // Parts nearer the camera draw a little larger
       const grow = (V, z) => 1 + (z - V.zFace) * V.pk;
       function proj(V, x, y, z) {
         const g = grow(V, z);
-        return [r3(x * g), r3(y * V.ct * g + (z - V.zMid) * V.st)];
+        const dz = z - V.zMid;
+        return [r3(g * (x * V.cp + y * V.sp * V.st) - dz * V.sp * V.ct), r3(y * V.ct * g + dz * V.st)];
       }
-      // A face at height z: unit x, y land at x·sx, y·sy + ty
+      // A face at height z: unit x, y land at x·sx + y·sh + tx, y·sy + ty
       function faceMap(V, z) {
         const g = grow(V, z);
-        return { sx: g, sy: V.ct * g, ty: (z - V.zMid) * V.st };
+        return { sx: g * V.cp, sy: V.ct * g, sh: g * V.sp * V.st, tx: -(z - V.zMid) * V.sp * V.ct, ty: (z - V.zMid) * V.st };
       }
     
       // Colors on a step of 8 so both sides get the same few, and Figma can
@@ -2728,7 +2734,7 @@
         const bands = grooves ? grooves * 2 + 1 : look.bands;
         const lit = rgbOf(look.c1);
         const dark = rgbOf(look.c2);
-        const view3 = [0, -V.st, V.ct];
+        const view3 = V.v3;
         const half = [LIGHT[0] + view3[0], LIGHT[1] + view3[1], LIGHT[2] + view3[2]];
         const hm = Math.hypot(half[0], half[1], half[2]);
         const faces = [];
@@ -2949,7 +2955,7 @@
         const look = wallLook(s, 'body');
         const lit = rgbOf(look.c1);
         const dark = rgbOf(look.c2);
-        const view3 = [0, -V.st, V.ct];
+        const view3 = V.v3;
         const half = [LIGHT[0] + view3[0], LIGHT[1] + view3[1], LIGHT[2] + view3[2]];
         const hm = Math.hypot(half[0], half[1], half[2]);
         const steps = 6;
@@ -3098,11 +3104,11 @@
           const F = faceMap(V, z);
           const c = Math.cos(a);
           const sn = Math.sin(a);
-          return [F.sx * c, F.sy * sn, -F.sx * sn, F.sy * c, F.sx * x, F.sy * y + F.ty].map(r3);
+          return [F.sx * c + F.sh * sn, F.sy * sn, F.sh * c - F.sx * sn, F.sy * c, F.sx * x + F.sh * y + F.tx, F.sy * y + F.ty].map(r3);
         };
         const faceQuad = (z, pts) => {
           const F = faceMap(V, z);
-          return pts.map(q => [r3(F.sx * q[0]), r3(F.sy * q[1] + F.ty)]);
+          return pts.map(q => [r3(F.sx * q[0] + F.sh * q[1] + F.tx), r3(F.sy * q[1] + F.ty)]);
         };
     
         // On a round wall of radius R·rAt(u) from z0 to z1
@@ -3182,7 +3188,17 @@
         let E = 0;
         const fit = (R, z, pad) => {
           const g = grow(V, z);
-          E = Math.max(E, R * g + pad, R * V.ct * g + Math.abs((z - V.zMid) * V.st) + pad);
+          if (!V.sp) {
+            E = Math.max(E, R * g + pad, R * V.ct * g + Math.abs((z - V.zMid) * V.st) + pad);
+            return;
+          }
+          // Turned, the face is a slanted ellipse: take its farthest point
+          const F = faceMap(V, z);
+          for (let a = 0; a < 72; a++) {
+            const x = R * Math.cos(a * Math.PI / 36);
+            const y = R * Math.sin(a * Math.PI / 36);
+            E = Math.max(E, Math.hypot(F.sx * x + F.sh * y + F.tx, F.sy * y + F.ty) + pad);
+          }
         };
         if (s.body.on) {
           const R = maxRadius(body(s, 0));
@@ -3318,7 +3334,7 @@
         const hair = Math.max(0.6, px / 260) / k;
         const face = (z, sp, parts) => {
           const F = KnobShapes.faceMap(V, z);
-          g.setTransform(k * F.sx, 0, 0, k * F.sy, c0, c0 + k * F.ty);
+          g.setTransform(k * F.sx, 0, k * F.sh, k * F.sy, c0 + k * F.tx, c0 + k * F.ty);
           paint(g, sp, v, k, L, parts);
         };
         const drawWall = w => {
@@ -3420,7 +3436,7 @@
         if (carved) {
           const F = KnobShapes.faceMap(V, V.zB);
           g.save();
-          g.setTransform(k * F.sx, 0, 0, k * F.sy, c0, c0 + k * F.ty);
+          g.setTransform(k * F.sx, 0, k * F.sh, k * F.sy, c0 + k * F.tx, c0 + k * F.ty);
           g.clip(poly(carved));
           face(V.zB, top, { body: true });
           g.restore();
@@ -6963,8 +6979,9 @@
           { type: 'range', key: 'ticks.labelSize', label: 'Label size', min: 4, max: 24, step: 0.5, color: 'ticks.labelColor', when: s => s.ticks.labels !== 'none' && !s.endless }
         ] },
         { layer: 'depth', title: '3D', toggle: 'depth.on', swatches: ['depth.c1', 'depth.c2'], fields: [
-          { type: 'tip', text: 'Tilts the camera toward the knob and shows its sides. Every frame is still a flat image, so strips export as usual. Give every knob on a panel the same tilt.' },
+          { type: 'tip', text: 'Tilts the camera toward the knob and shows its sides. Every frame is still a flat image, so strips export as usual. Give every knob on a panel the same tilt and turn.' },
           { type: 'range', key: 'depth.tilt', label: 'Tilt', min: -60, max: 60, step: 1, unit: '°', tip: 'Above 0 looks down on the knob, showing the side above the face; below 0 looks up from underneath' },
+          { type: 'range', key: 'depth.turn', label: 'Turn', min: -60, max: 60, step: 1, unit: '°', tip: 'Swings the camera round the knob: above 0 shows its right side, below 0 its left. The light stays put' },
           { type: 'range', key: 'depth.height', label: 'Height', min: 0, max: 80, step: 0.5, tip: 'How tall the body stands; 100 is its width' },
           { type: 'range', key: 'depth.persp', label: 'Perspective', min: 0, max: 100, step: 1, tip: 'Parts nearer the camera draw a little larger' },
           { type: 'colors', keys: ['depth.c1', 'depth.c2'], label: 'Side', titles: () => ['Side in the light', 'Side in shadow'] },
@@ -10474,7 +10491,7 @@
           'Pick a look in **Gallery** or a starter style, then change any part in **Studio**.',
           'Drag the knob on the stage to turn it, scroll for fine steps, or press ▶ to play it.',
           'Drag a setting\'s name sideways to adjust it (Shift for fine steps). Double-click the name to reset it.',
-          'Turn on **3D** to tilt the camera and give any knob height, with sides that turn with it. Use the same **Tilt** for every knob on a panel. **Puck** and **Studio** are free 3D starters.',
+          'Turn on **3D** to tilt the camera and give any knob height, with sides that turn with it. **Turn** swings the view left or right. Use the same **Tilt** and **Turn** for every knob on a panel. **Puck** and **Studio** are free 3D starters.',
           '**Printing** puts a number scale on a 3D knob, like guitar knobs: on top or down the side, 0–10 or 1–10, read where the pointer starts or at the top. An **Index mark** on the panel shows the reading spot.',
           '**Output** sets the frame size (Vellum uses 110, 53 or 35 px), the frame count and the strip direction. **Export @2x** makes sharp PNGs for Vellum.',
           '**Endless** makes a full 360° turn that loops, for endless encoders. Ticks and LED dots go all the way round. For an LED-dot ring or an encoder with clicks, set **Frames** to a multiple of the dot or click count (24 → 24, 48, 96 or 120). In your plugin, wrap the frame number instead of stopping at the ends.',
@@ -10574,6 +10591,22 @@
     // here with each release that has something worth showing.
     const WhatsNew = (() => {
       const NOTES = {
+        '2.3.1': {
+          title: 'Agent mode (MCP)',
+          // A knob entry is a preset id, or { id, turn } to show it turned
+          knobs: ['scoop', { id: 'studio3d', turn: 35 }, 'goldSlot'],
+          tab: 'knobs', preset: 'studio3d',
+          items: [
+            'PRO: build your UI by talking to **Claude Code** or **Codex**. Paste a sketch, then click **Agent** in the header.',
+            'Also new: **Export UI** in Panels, and **Scoop** 3D knobs.',
+            'Setup: copy this into your agent:'
+          ],
+          copy: 'Install vstgui-mcp from https://www.npmjs.com/package/vstgui-mcp',
+          // Shown under the copy box
+          more: [
+            'New: **Turn** for 3D knobs. Swing the view left or right as well as up and down with **Tilt**. Find it in the knob studio\'s **3D** section.'
+          ]
+        },
         '2.3.0': {
           title: 'Agent mode (MCP)',
           knobs: ['scoop', 'goldSlot', 'studio3d'],
@@ -10606,13 +10639,21 @@
         note = n;
         $('whatsNewTag').textContent = 'New in ' + n.version;
         $('whatsNewTitle').textContent = n.title;
-        $('whatsNewList').innerHTML = n.items.map(s => '<li>' + esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') + '</li>').join('');
+        const li = list => list.map(s => '<li>' + esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') + '</li>').join('');
+        $('whatsNewList').innerHTML = li(n.items);
+        $('whatsNewMore').innerHTML = li(n.more || []);
+        $('whatsNewMore').hidden = !(n.more && n.more.length);
         $('whatsNewCopy').hidden = !n.copy;
         $('whatsNewCopyText').textContent = n.copy || '';
         $('whatsNewCopyBtn').textContent = 'Copy';
         const box = $('whatsNewKnobs');
         box.innerHTML = '';
-        const specs = (n.knobs || []).map(id => KnobCore.preset(id));
+        const specs = (n.knobs || []).map(k => {
+          if (typeof k === 'string') return KnobCore.preset(k);
+          const s = JSON.parse(JSON.stringify(KnobCore.preset(k.id)));
+          if (s.depth && k.turn) s.depth.turn = k.turn;
+          return s;
+        });
         const canvases = specs.map(() => {
           const c = document.createElement('canvas');
           c.width = c.height = 192;
